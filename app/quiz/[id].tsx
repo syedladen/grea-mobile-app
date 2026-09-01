@@ -1,20 +1,20 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import RenderHTML from 'react-native-render-html';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
 import {
-  apiGetCurriculum,
-  apiGetProgress,
-  apiGetQuiz,
-  apiSubmitQuiz,
-  cleanDisplayText,
-  extractMasteriyoError,
-  getErrorMessage,
-  getStoredToken,
-  isMasteriyoSyncFailure,
+    apiGetCurriculum,
+    apiGetProgress,
+    apiGetQuiz,
+    apiSubmitQuiz,
+    cleanDisplayText,
+    extractMasteriyoError,
+    getErrorMessage,
+    getStoredToken,
+    isMasteriyoSyncFailure,
 } from '@/src/lib/api';
 
 export default function QuizScreen() {

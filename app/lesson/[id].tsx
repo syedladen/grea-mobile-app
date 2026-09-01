@@ -5,15 +5,15 @@ import RenderHTML from 'react-native-render-html';
 
 import { theme } from '@/constants/theme';
 import {
-  apiCompleteLesson,
-  apiGetCurriculum,
-  apiGetLesson,
-  apiGetProgress,
-  decodeHtmlEntities,
-  extractMasteriyoError,
-  getErrorMessage,
-  getStoredToken,
-  isMasteriyoSyncFailure,
+    apiCompleteLesson,
+    apiGetCurriculum,
+    apiGetLesson,
+    apiGetProgress,
+    decodeHtmlEntities,
+    extractMasteriyoError,
+    getErrorMessage,
+    getStoredToken,
+    isMasteriyoSyncFailure,
 } from '@/src/lib/api';
 
 export default function LessonScreen() {
