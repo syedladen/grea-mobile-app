@@ -98,14 +98,14 @@ export type QuizQuestion = {
   question?: string;
   title?: string;
   prompt?: string;
-  choices?: Array<{
+  choices?: {
     id?: number | string;
     label?: string;
     text?: string;
     value?: string;
     description?: string;
-  }>;
-  answers?: Array<{ id?: number | string; text?: string; value?: string }>;
+  }[];
+  answers?: { id?: number | string; text?: string; value?: string }[];
 };
 
 export type QuizResponse = {
@@ -260,18 +260,6 @@ export type QuizSubmissionResult = {
 
 const TOKEN_KEY = 'grea_token';
 
-function safeSyncLogPayload(payload: unknown): { sync?: unknown; progress?: unknown } {
-  if (!payload || typeof payload !== 'object') {
-    return {};
-  }
-
-  const record = payload as Record<string, unknown>;
-  return {
-    sync: record.sync,
-    progress: record.progress,
-  };
-}
-
 export function extractMasteriyoError(payload: unknown): string {
   if (!payload || typeof payload !== 'object') {
     return 'Unknown backend error';
@@ -303,30 +291,6 @@ export function extractMasteriyoError(payload: unknown): string {
   }
 
   return 'Unknown backend error';
-}
-
-function extractCourseId(payload: unknown): number | string | null {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-
-  const record = payload as Record<string, unknown>;
-  const candidates = [
-    record.course_id,
-    record.courseId,
-    record.progress && typeof record.progress === 'object' ? (record.progress as Record<string, unknown>).course_id : undefined,
-    record.progress && typeof record.progress === 'object' ? (record.progress as Record<string, unknown>).courseId : undefined,
-    record.sync && typeof record.sync === 'object' && 'course_id' in (record.sync as Record<string, unknown>) ? (record.sync as Record<string, unknown>).course_id : undefined,
-    record.sync && typeof record.sync === 'object' && 'courseId' in (record.sync as Record<string, unknown>) ? (record.sync as Record<string, unknown>).courseId : undefined,
-  ];
-
-  for (const value of candidates) {
-    if (typeof value === 'number' || typeof value === 'string') {
-      return value;
-    }
-  }
-
-  return null;
 }
 
 export function isMasteriyoSyncFailure(payload: unknown): boolean {
@@ -427,9 +391,9 @@ export function normalizedTitle(value?: string | null): string {
   return cleanDisplayText(value).toLowerCase();
 }
 
-export function deduplicateSectionItems(items: Array<Record<string, any>> = []): Array<Record<string, any>> {
+export function deduplicateSectionItems(items: Record<string, any>[] = []): Record<string, any>[] {
   const seenIds = new Set<string>();
-  const uniqueItems: Array<Record<string, any>> = [];
+  const uniqueItems: Record<string, any>[] = [];
 
   for (const item of items) {
     if (!item || typeof item !== 'object') continue;
@@ -577,7 +541,6 @@ export async function apiGetMe(token?: string | null): Promise<{ user?: User; da
 
 export async function apiGetCourses(token?: string | null): Promise<Course[]> {
   const payload = await request<{ courses?: Course[]; data?: Course[]; items?: Course[]; [key: string]: unknown }>('courses', {}, token);
-  console.log('[grea] raw /courses response', payload);
 
   if (Array.isArray(payload)) return payload as Course[];
   if (Array.isArray(payload.courses)) return payload.courses;
@@ -602,7 +565,6 @@ export async function apiGetCourse(courseId: number | string, token?: string | n
 
 export async function apiGetCurriculum(courseId: number | string, token?: string | null): Promise<CourseSection[]> {
   const payload = await request<{ curriculum?: CourseSection[]; items?: CourseSection[]; data?: CourseSection[]; [key: string]: unknown }>(`courses/${courseId}/curriculum`, {}, token);
-  console.log('[grea] raw /courses/{id}/curriculum response', payload);
 
   if (Array.isArray(payload)) return payload as CourseSection[];
   if (Array.isArray(payload.curriculum)) return payload.curriculum;
@@ -627,8 +589,6 @@ export async function apiGetLesson(lessonId: number | string, token?: string | n
 
 export async function apiCompleteLesson(lessonId: number | string, token?: string | null): Promise<CompletionApiResponse> {
   const payload = await request<CompletionApiResponse>(`lessons/${lessonId}/complete`, { method: 'POST' }, token);
-  console.log('[grea] complete lesson response', payload);
-  console.log('[grea] lesson sync response', safeSyncLogPayload(payload));
   return payload;
 }
 
@@ -660,11 +620,6 @@ export async function apiSubmitQuiz(
     token,
   );
 
-  console.log('[grea] quiz submit response', payload);
-  console.log('[grea] quiz attempt sync', payload.attempt_sync);
-  console.log('[grea] quiz completion sync', payload.completion_sync);
-  console.log('[grea] quiz sync response', safeSyncLogPayload(payload));
-
   return payload;
 }
 
@@ -694,7 +649,7 @@ export async function apiGetAssignmentSubmission(
 export async function apiSubmitAssignment(
   assignmentId: number | string,
   text: string,
-  files: Array<{ uri: string; name: string; type?: string }>,
+  files: { uri: string; name: string; type?: string }[],
   token?: string | null,
 ): Promise<{ message?: string; submitted?: boolean; id?: number; [key: string]: unknown }> {
   const formData = new FormData();
@@ -725,7 +680,6 @@ export async function apiSubmitAssignment(
 
 export async function apiGetProgress(courseId: number | string, token?: string | null): Promise<ProgressSummary | null> {
   const payload = await request<ProgressSummary | { data?: ProgressSummary; progress?: ProgressSummary }>(`progress/${courseId}`, {}, token);
-  console.log('[grea] raw /progress/{id} response', payload);
 
   if (payload && typeof payload === 'object' && 'data' in payload && payload.data) {
     return payload.data as ProgressSummary;

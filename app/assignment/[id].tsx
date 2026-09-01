@@ -2,7 +2,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import RenderHTML from 'react-native-render-html';
 
 import { theme } from '@/constants/theme';
@@ -59,7 +60,7 @@ export default function AssignmentScreen() {
   const [lesson, setLesson] = useState<any>(null);
   const [submission, setSubmission] = useState<AssignmentSubmission | null>(null);
   const [text, setText] = useState('');
-  const [selectedFiles, setSelectedFiles] = useState<Array<{ uri: string; name: string; type?: string; size?: number }>>([]);
+  const [selectedFiles, setSelectedFiles] = useState<{ uri: string; name: string; type?: string; size?: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -109,8 +110,6 @@ export default function AssignmentScreen() {
 
       setLesson(lessonData);
       const fresh = normalizeAssignmentSubmission(submissionResponse);
-      console.log('ASSIGNMENT GET RAW', submissionResponse);
-      console.log('ASSIGNMENT GET NORMALIZED', fresh);
       if (fresh) {
         applyFreshSubmission(fresh);
       } else {
@@ -225,9 +224,7 @@ export default function AssignmentScreen() {
       setSaving(true);
       setError('');
       const result = await apiSubmitAssignment(id, text, selectedFiles, token);
-      console.log('ASSIGNMENT POST RAW', result);
       const saved = normalizeAssignmentSubmission(result.submission ?? result);
-      console.log('ASSIGNMENT POST NORMALIZED', saved);
 
       requestVersion.current += 1;
       if (saved) {
@@ -238,9 +235,7 @@ export default function AssignmentScreen() {
 
       const followVersion = ++requestVersion.current;
       const refreshed = await apiGetAssignmentSubmission(id, token, Date.now());
-      console.log('ASSIGNMENT GET RAW', refreshed);
       const fresh = normalizeAssignmentSubmission(refreshed);
-      console.log('ASSIGNMENT GET NORMALIZED', fresh);
       if (followVersion !== requestVersion.current) {
         return;
       }

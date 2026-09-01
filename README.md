@@ -1,50 +1,40 @@
-# Welcome to your Expo app 👋
+# GREA Mobile
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Global Real Estate Academy mobile LMS app built with Expo SDK 54, Expo Router, React Native, and TypeScript.
 
-## Get started
+## Overview
 
-1. Install dependencies
+This app connects to the GREA WordPress LMS backend at:
 
-   ```bash
-   npm install
-   ```
+https://globalrealestateacademy.org/wp-json/grea-mobile/v1
 
-2. Start the app
+It supports authentication with `expo-secure-store`, and synchronizes lessons, quizzes, assignments, and learner progress with the GREA LMS backend.
 
-   ```bash
-   npx expo start
-   ```
+No Masteriyo consumer key or secret belongs in the mobile repository.
 
-In the output, you'll find options to open the app in a
+## Tech stack
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- Expo SDK 54
+- React Native
+- Expo Router
+- TypeScript
+- `expo-secure-store` for token persistence
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Local setup
 
 ```bash
-npm run reset-project
+npm install
+npx expo start --tunnel
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Type checking
 
-## Learn more
+```bash
+npx tsc --noEmit
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Notes
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Authentication uses secure local storage and bearer token handling.
+- Lesson completion, quizzes, assignments, and progress sync with the WordPress/GREA LMS backend.
+- This repository is for the mobile client only; backend configuration stays on the server side.

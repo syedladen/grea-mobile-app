@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import RenderHTML from 'react-native-render-html';
 
 import { theme } from '@/constants/theme';
@@ -77,10 +78,6 @@ export default function QuizScreen() {
 
       if (syncFailed) {
         const backendError = extractMasteriyoError(payload);
-        console.log('[grea] safe sync response', {
-          sync: payload.sync,
-          progress: payload.progress,
-        });
         setError(`Masteriyo sync failed: ${backendError}`);
         setResult(null);
         return;

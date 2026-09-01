@@ -58,10 +58,6 @@ export default function LessonScreen() {
 
       if (syncFailed) {
         const backendError = extractMasteriyoError(result);
-        console.log('[grea] safe sync response', {
-          sync: result.sync,
-          progress: result.progress,
-        });
         setError(`Masteriyo sync failed: ${backendError}`);
         return;
       }
