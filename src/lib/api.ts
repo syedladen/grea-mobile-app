@@ -220,6 +220,9 @@ export type ProgressSummary = {
   total_items?: number;
   completed_count?: number;
   total_count?: number;
+  completed_ids?: Array<number | string>;
+  completedIds?: Array<number | string>;
+  source?: string;
 };
 
 export type MasteriyoSyncState = {
@@ -260,37 +263,87 @@ export type QuizSubmissionResult = {
 
 const TOKEN_KEY = 'grea_token';
 
-export function extractMasteriyoError(payload: unknown): string {
-  if (!payload || typeof payload !== 'object') {
-    return 'Unknown backend error';
+function pickUsefulText(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
   }
 
-  const record = payload as Record<string, unknown>;
-  const sync = record.sync as Record<string, unknown> | undefined;
-  if (sync) {
-    const masteriyo = (sync.masteriyo as Record<string, unknown> | null | undefined) ?? null;
-    const candidates = [
-      sync.masteriyo_error,
-      sync.masteriyoError,
-      masteriyo?.error,
-      masteriyo?.message,
-      sync.error,
-      masteriyo?.message,
-    ];
-
-    for (const value of candidates) {
-      if (typeof value === 'string' && value.trim()) {
-        return value.trim();
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = pickUsefulText(item);
+      if (nested) {
+        return nested;
       }
     }
   }
 
-  const message = record.message;
-  if (typeof message === 'string' && message.trim()) {
-    return message.trim();
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const keyOrder = [
+      'message',
+      'error',
+      'detail',
+      'details',
+      'reason',
+      'description',
+      'masteriyo_error',
+      'masteriyoError',
+      'error_message',
+      'errorMessage',
+      'sync_error',
+      'syncError',
+      'masteriyo',
+      'data',
+      'result',
+      'status',
+    ];
+
+    for (const key of keyOrder) {
+      const nested = pickUsefulText(record[key]);
+      if (nested) {
+        return nested;
+      }
+    }
   }
 
-  return 'Unknown backend error';
+  return null;
+}
+
+export function extractMasteriyoError(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') {
+    return 'Synchronization could not be completed';
+  }
+
+  const record = payload as Record<string, unknown>;
+  const sync = (record.sync as Record<string, unknown> | undefined) ?? undefined;
+  const masteriyo = (sync?.masteriyo as Record<string, unknown> | undefined) ?? undefined;
+  const attemptSync = (record.attempt_sync as Record<string, unknown> | undefined) ?? undefined;
+  const completionSync = (record.completion_sync as Record<string, unknown> | undefined) ?? undefined;
+
+  const candidates = [
+    sync?.masteriyo_error,
+    sync?.masteriyoError,
+    sync?.message,
+    sync?.error,
+    sync?.detail,
+    masteriyo?.error,
+    masteriyo?.message,
+    masteriyo?.detail,
+    attemptSync?.message,
+    completionSync?.message,
+    attemptSync?.error,
+    completionSync?.error,
+    record.masteriyo_error,
+    record.masteriyoError,
+    record.error,
+    record.message,
+    record.detail,
+    record.data,
+    record.result,
+  ];
+
+  const found = candidates.map((value) => pickUsefulText(value)).find((value) => Boolean(value));
+  return found || 'Synchronization could not be completed';
 }
 
 export function isMasteriyoSyncFailure(payload: unknown): boolean {
@@ -305,6 +358,9 @@ export function isMasteriyoSyncFailure(payload: unknown): boolean {
   const syncMasteriyo = (sync?.masteriyo as Record<string, unknown> | null | undefined) ?? null;
   const completionMasteriyo = (completionSync?.masteriyo as Record<string, unknown> | null | undefined) ?? null;
 
+  const masteriyoSync = (sync?.masteriyo as Record<string, unknown> | null | undefined) ?? null;
+  const completionMasteriyoSync = (completionSync?.masteriyo as Record<string, unknown> | null | undefined) ?? null;
+
   const candidates = [
     sync?.masteriyo_synced,
     syncMasteriyo?.synced,
@@ -314,9 +370,85 @@ export function isMasteriyoSyncFailure(payload: unknown): boolean {
     attemptSync?.grea_lms_synced,
     attemptSync?.greaLmsSynced,
     attemptSync?.synced,
+    masteriyoSync?.synced,
+    completionMasteriyoSync?.synced,
+    sync?.success,
   ];
 
-  return candidates.some((value) => value === false);
+  return candidates.some((value) => value === false || value === 'false' || value === 'failed' || value === 'error');
+}
+
+export function isCourseItemCompleted(item: Record<string, unknown> | null | undefined, targetId?: number | string | null): boolean {
+  if (!item || typeof item !== 'object') {
+    return false;
+  }
+
+  const currentId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id;
+  const matchesTarget = targetId === undefined || targetId === null || String(currentId ?? '') === String(targetId);
+  return matchesTarget && Boolean(item.completed);
+}
+
+export function isLessonCompletedInCurriculum(curriculum: CourseSection[] | null | undefined, targetId: number | string): boolean {
+  if (!Array.isArray(curriculum)) {
+    return false;
+  }
+
+  const stack: Record<string, unknown>[] = [...curriculum] as Record<string, unknown>[];
+
+  while (stack.length > 0) {
+    const item = stack.pop();
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+
+    if (Array.isArray(item.items)) {
+      stack.push(...(item.items as Record<string, unknown>[]));
+    }
+
+    if (isCourseItemCompleted(item, targetId)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export async function verifyLessonCompletionAfterSync(
+  lessonId: number | string,
+  token: string,
+  courseId?: number | string | null,
+  waitMs = 350,
+): Promise<{ verified: boolean; lesson: LessonResponse | null; curriculum: CourseSection[]; progress: ProgressSummary | null; detail?: string }> {
+  const delayMs = Math.min(Math.max(waitMs, 0), 500);
+  if (delayMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  const [lessonResult, progressResult, curriculumResult] = await Promise.allSettled([
+    apiGetLesson(lessonId, token),
+    courseId ? apiGetProgress(courseId, token) : Promise.resolve(null),
+    courseId ? apiGetCurriculum(courseId, token) : Promise.resolve([] as CourseSection[]),
+  ]);
+
+  const lesson = lessonResult.status === 'fulfilled' ? (lessonResult.value as LessonResponse | null) : null;
+  const progress = progressResult.status === 'fulfilled' ? (progressResult.value as ProgressSummary | null) : null;
+  const curriculum = curriculumResult.status === 'fulfilled' ? (curriculumResult.value as CourseSection[]) : [];
+
+  if (lesson?.completed === true) {
+    return { verified: true, lesson, curriculum, progress };
+  }
+
+  if (courseId && isLessonCompletedInCurriculum(curriculum, lessonId)) {
+    return { verified: true, lesson, curriculum, progress };
+  }
+
+  return {
+    verified: false,
+    lesson,
+    curriculum,
+    progress,
+    detail: 'Lesson remained incomplete after sync verification',
+  };
 }
 
 export async function getStoredToken(): Promise<string | null> {
@@ -475,15 +607,24 @@ function buildUrl(path: string): string {
   return `${API_BASE_URL}/${normalized}`;
 }
 
-async function request<T>(path: string, options: RequestInit = {}, token?: string | null): Promise<T> {
+function appendCacheBust(path: string, cacheBust?: number | string): string {
+  const rawPath = path.startsWith('/') ? path.slice(1) : path;
+  const value = cacheBust !== undefined ? String(cacheBust) : String(Date.now());
+  const separator = rawPath.includes('?') ? '&' : '?';
+  return `${rawPath}${separator}_grea_ts=${encodeURIComponent(value)}`;
+}
+
+async function request<T>(path: string, options: RequestInit = {}, token?: string | null, fresh = false, cacheBust?: number | string): Promise<T> {
   const baseHeaders = {
     ...getApiHeaders(token),
     ...(options.headers ? (options.headers as Record<string, string>) : {}),
   };
   const headers = formatFormDataHeaders(baseHeaders, options.body);
+  const effectivePath = fresh || cacheBust !== undefined ? appendCacheBust(path, cacheBust ?? Date.now()) : path;
 
-  const response = await fetch(buildUrl(path), {
+  const response = await fetch(buildUrl(effectivePath), {
     ...options,
+    ...(fresh || cacheBust !== undefined ? { cache: 'no-store' } : {}),
     headers,
   });
 
@@ -491,7 +632,9 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   const body = text ? JSON.parse(text) : null;
 
   if (!response.ok) {
-    const error = new Error((body && (body.message || body.error || 'Request failed')) || 'Request failed');
+    const fallback = 'Request failed';
+    const detail = pickUsefulText(body) || fallback;
+    const error = new Error(detail);
     Object.assign(error, { status: response.status, body });
     throw error;
   }
@@ -549,6 +692,16 @@ export async function apiGetCourses(token?: string | null): Promise<Course[]> {
   return [];
 }
 
+export async function apiGetCoursesFresh(token?: string | null): Promise<Course[]> {
+  const payload = await request<{ courses?: Course[]; data?: Course[]; items?: Course[]; [key: string]: unknown }>('courses', {}, token, true, Date.now());
+
+  if (Array.isArray(payload)) return payload as Course[];
+  if (Array.isArray(payload.courses)) return payload.courses;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.items)) return payload.items;
+  return [];
+}
+
 export async function apiGetCourse(courseId: number | string, token?: string | null): Promise<Course | null> {
   const payload = await request<Course | { data?: Course; course?: Course }>(`courses/${courseId}`, {}, token);
 
@@ -563,8 +716,8 @@ export async function apiGetCourse(courseId: number | string, token?: string | n
   return payload as Course;
 }
 
-export async function apiGetCurriculum(courseId: number | string, token?: string | null): Promise<CourseSection[]> {
-  const payload = await request<{ curriculum?: CourseSection[]; items?: CourseSection[]; data?: CourseSection[]; [key: string]: unknown }>(`courses/${courseId}/curriculum`, {}, token);
+export async function apiGetCurriculum(courseId: number | string, token?: string | null, cacheBust?: number | string): Promise<CourseSection[]> {
+  const payload = await request<{ curriculum?: CourseSection[]; items?: CourseSection[]; data?: CourseSection[]; [key: string]: unknown }>(`courses/${courseId}/curriculum`, {}, token, false, cacheBust);
 
   if (Array.isArray(payload)) return payload as CourseSection[];
   if (Array.isArray(payload.curriculum)) return payload.curriculum;
@@ -573,8 +726,12 @@ export async function apiGetCurriculum(courseId: number | string, token?: string
   return [];
 }
 
-export async function apiGetLesson(lessonId: number | string, token?: string | null): Promise<LessonResponse | null> {
-  const payload = await request<LessonResponse | { data?: LessonResponse; lesson?: LessonResponse }>(`lessons/${lessonId}`, {}, token);
+export async function apiGetCurriculumFresh(courseId: number | string, token?: string | null): Promise<CourseSection[]> {
+  return apiGetCurriculum(courseId, token, Date.now());
+}
+
+export async function apiGetLesson(lessonId: number | string, token?: string | null, cacheBust?: number | string): Promise<LessonResponse | null> {
+  const payload = await request<LessonResponse | { data?: LessonResponse; lesson?: LessonResponse }>(`lessons/${lessonId}`, {}, token, false, cacheBust);
 
   if (payload && typeof payload === 'object' && 'data' in payload && payload.data) {
     return payload.data as LessonResponse;
@@ -585,6 +742,10 @@ export async function apiGetLesson(lessonId: number | string, token?: string | n
   }
 
   return payload as LessonResponse;
+}
+
+export async function apiGetLessonFresh(lessonId: number | string, token?: string | null): Promise<LessonResponse | null> {
+  return apiGetLesson(lessonId, token, Date.now());
 }
 
 export async function apiCompleteLesson(lessonId: number | string, token?: string | null): Promise<CompletionApiResponse> {
@@ -678,8 +839,8 @@ export async function apiSubmitAssignment(
   );
 }
 
-export async function apiGetProgress(courseId: number | string, token?: string | null): Promise<ProgressSummary | null> {
-  const payload = await request<ProgressSummary | { data?: ProgressSummary; progress?: ProgressSummary }>(`progress/${courseId}`, {}, token);
+export async function apiGetProgress(courseId: number | string, token?: string | null, cacheBust?: number | string): Promise<ProgressSummary | null> {
+  const payload = await request<ProgressSummary | { data?: ProgressSummary; progress?: ProgressSummary }>(`progress/${courseId}`, {}, token, false, cacheBust);
 
   if (payload && typeof payload === 'object' && 'data' in payload && payload.data) {
     return payload.data as ProgressSummary;
@@ -690,6 +851,10 @@ export async function apiGetProgress(courseId: number | string, token?: string |
   }
 
   return payload as ProgressSummary;
+}
+
+export async function apiGetProgressFresh(courseId: number | string, token?: string | null): Promise<ProgressSummary | null> {
+  return apiGetProgress(courseId, token, Date.now());
 }
 
 export function getItemType(name?: string): string {

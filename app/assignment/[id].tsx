@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -21,6 +22,7 @@ import {
     normalizeAssignmentSubmission,
     sanitizeContentForNative,
 } from '@/src/lib/api';
+import { flattenCurriculumItems, getCurriculumNavigationTarget } from '@/src/lib/curriculum-navigation';
 
 const defaultLimits = {
   max_files: 5,
@@ -64,6 +66,7 @@ export default function AssignmentScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showSuccessActions, setShowSuccessActions] = useState(false);
   const [error, setError] = useState('');
   const requestVersion = useRef(0);
 
@@ -153,6 +156,34 @@ export default function AssignmentScreen() {
   const assignmentHtml = sanitizeContentForNative(lesson?.content || lesson?.body || '');
   const assignmentText = cleanDisplayText(lesson?.content || lesson?.body || '');
 
+  const goToNextItem = useCallback(async () => {
+    const token = await getStoredToken();
+    const courseId = lesson?.course_id ?? lesson?.courseId;
+    if (!courseId || !token) {
+      router.push('/(tabs)');
+      return;
+    }
+
+    try {
+      const curriculum = await apiGetCurriculum(courseId, token);
+      const items = flattenCurriculumItems(curriculum);
+      const currentIndex = items.findIndex((item) => {
+        const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id;
+        return itemId !== undefined && String(itemId) === String(id);
+      });
+      const next = currentIndex >= 0 ? items[currentIndex + 1] : null;
+      const target = next ? getCurriculumNavigationTarget(next) : null;
+      if (target) {
+        router.push(target);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    router.push({ pathname: '/course/[id]', params: { id: String(courseId) } });
+  }, [id, lesson?.course_id, lesson?.courseId]);
+
   async function handleSelectFiles() {
     if (!canSubmit) return;
 
@@ -232,6 +263,7 @@ export default function AssignmentScreen() {
         setText(saved.text ?? '');
         setSelectedFiles([]);
       }
+      setShowSuccessActions(true);
 
       const followVersion = ++requestVersion.current;
       const refreshed = await apiGetAssignmentSubmission(id, token, Date.now());
@@ -253,6 +285,8 @@ export default function AssignmentScreen() {
           apiGetCourses(token),
         ]);
       }
+
+      setError(result?.message ? String(result.message) : (saved ? 'Assignment submitted' : 'Submission updated'));
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -275,14 +309,20 @@ export default function AssignmentScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>Back</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
           <View style={styles.headerActions}>
-            <TouchableOpacity onPress={() => void loadAssignment(false)} style={styles.refreshButton} disabled={refreshing || saving}>
-              <Text style={styles.refreshText}>{refreshing ? 'Refreshing...' : 'Refresh'}</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)')} style={styles.homeButton}>
+              <Ionicons name="home" size={18} color={theme.colors.text} />
             </TouchableOpacity>
-            <Text style={[styles.statusPill, assignmentStatus === 'graded' && styles.statusGraded, assignmentStatus === 'resubmit' && styles.statusResubmit]}>{statusLabel}</Text>
+            <TouchableOpacity onPress={() => void loadAssignment(false)} style={styles.refreshButton} disabled={refreshing || saving}>
+              <Ionicons name="refresh" size={16} color={theme.colors.text} />
+            </TouchableOpacity>
           </View>
         </View>
+        <View style={styles.statusRow}><Text style={[styles.statusPill, assignmentStatus === 'graded' && styles.statusGraded, assignmentStatus === 'resubmit' && styles.statusResubmit]}>{statusLabel}</Text></View>
 
         {loading ? (
           <View style={styles.loadingBox}><ActivityIndicator color={theme.colors.gold} size="large" /></View>
@@ -407,14 +447,33 @@ export default function AssignmentScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={saving}>
-                  <Text style={styles.primaryButtonText}>{saving ? 'Submitting...' : assignmentStatus === 'resubmit' ? 'Resubmit Assignment' : assignmentStatus === 'submitted' ? 'Update Submission' : 'Submit Assignment'}</Text>
-                </TouchableOpacity>
+                <View style={styles.submitStack}>
+                  <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={saving}>
+                    <Text style={styles.primaryButtonText}>{saving ? 'Submitting...' : assignmentStatus === 'resubmit' ? 'Resubmit Assignment' : assignmentStatus === 'submitted' ? 'Update Submission' : 'Submit Assignment'}</Text>
+                  </TouchableOpacity>
+                  {showSuccessActions ? (
+                    <>
+                      <TouchableOpacity style={styles.primaryButton} onPress={() => void goToNextItem()}>
+                        <Text style={styles.primaryButtonText}>Continue / Next Item</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push({ pathname: '/course/[id]', params: { id: String(lesson?.course_id ?? lesson?.courseId ?? 0) } })}>
+                        <Text style={styles.secondaryButtonText}>Back to Course</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.tertiaryButton} onPress={() => router.push('/(tabs)')}>
+                        <Ionicons name="home" size={16} color={theme.colors.text} />
+                        <Text style={styles.tertiaryButtonText}>Home</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : null}
+                </View>
               </View>
             ) : (
               <View style={styles.closedBox}>
                 <Text style={styles.closedTitle}>Submission closed</Text>
                 <Text style={styles.closedText}>This assignment is no longer accepting new responses or files.</Text>
+                <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push({ pathname: '/course/[id]', params: { id: String(lesson?.course_id ?? lesson?.courseId ?? 0) } })}>
+                  <Text style={styles.secondaryButtonText}>Back to Course</Text>
+                </TouchableOpacity>
               </View>
             )}
           </>
@@ -456,6 +515,16 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontWeight: '600',
   },
+  homeButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
   refreshButton: {
     paddingVertical: 8,
     paddingHorizontal: 12,
@@ -467,6 +536,9 @@ const styles = StyleSheet.create({
   refreshText: {
     color: theme.colors.text,
     fontWeight: '600',
+  },
+  statusRow: {
+    alignItems: 'flex-start',
   },
   statusPill: {
     backgroundColor: '#163726',
@@ -670,6 +742,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
   },
+  submitStack: {
+    gap: 10,
+  },
   primaryButton: {
     backgroundColor: theme.colors.gold,
     borderRadius: 14,
@@ -690,6 +765,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryButtonText: {
+    color: theme.colors.text,
+    fontWeight: '700',
+  },
+  tertiaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'transparent',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 48,
+  },
+  tertiaryButtonText: {
     color: theme.colors.text,
     fontWeight: '700',
   },

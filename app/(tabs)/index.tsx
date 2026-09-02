@@ -1,19 +1,21 @@
-import { Link, router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Link, router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
-import { apiGetCourses, apiGetMe, decodeHtmlEntities, getErrorMessage, getStoredToken, resolveDisplayName } from '@/src/lib/api';
+import { apiGetCoursesFresh, apiGetCurriculumFresh, apiGetMe, decodeHtmlEntities, getErrorMessage, getStoredToken, resolveDisplayName } from '@/src/lib/api';
+import { findFirstUnfinishedItem, getCurriculumNavigationTarget } from '@/src/lib/curriculum-navigation';
 
 export default function HomeScreen() {
   const [user, setUser] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [resolvingNext, setResolvingNext] = useState(false);
   const [error, setError] = useState('');
 
-  async function loadDashboard() {
+  const loadDashboard = useCallback(async () => {
     const token = await getStoredToken();
     if (!token) {
       router.replace('/login');
@@ -21,7 +23,7 @@ export default function HomeScreen() {
     }
 
     try {
-      const [me, courseList] = await Promise.all([apiGetMe(token), apiGetCourses(token)]);
+      const [me, courseList] = await Promise.all([apiGetMe(token), apiGetCoursesFresh(token)]);
       const meUser = (me.user ?? me.data ?? me) as any;
       setUser(meUser);
       setCourses(Array.isArray(courseList) ? courseList : []);
@@ -32,15 +34,49 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }
-
-  useEffect(() => {
-    loadDashboard();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadDashboard();
+    }, [loadDashboard]),
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
     await loadDashboard();
+  };
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  const handleContinueLearning = async (course: any) => {
+    const token = await getStoredToken();
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+
+    try {
+      setResolvingNext(true);
+      const curriculum = await apiGetCurriculumFresh(course.id ?? course.course_id ?? 0, token);
+      const next = findFirstUnfinishedItem(curriculum);
+      const target = next ? getCurriculumNavigationTarget(next) : null;
+
+      if (target) {
+        router.push(target as any);
+      } else {
+        router.push({ pathname: '/course/[id]', params: { id: String(course.id ?? course.course_id ?? 0) } });
+      }
+    } catch {
+      router.push({ pathname: '/course/[id]', params: { id: String(course.id ?? course.course_id ?? 0) } });
+    } finally {
+      setResolvingNext(false);
+    }
   };
 
   return (
@@ -52,7 +88,7 @@ export default function HomeScreen() {
       >
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.eyebrow}>Good evening</Text>
+            <Text style={styles.eyebrow}>{getGreeting()}</Text>
             <Text style={styles.title}>{resolveDisplayName(user)}</Text>
           </View>
         </View>
@@ -64,12 +100,17 @@ export default function HomeScreen() {
         ) : (
           <>
             <View style={styles.heroCard}>
-              <Text style={styles.heroTitle}>Your learning path</Text>
-              <Text style={styles.heroText}>Stay on track with your course progress and continue where you left off.</Text>
+              <Text style={styles.heroTitle}>Continue learning</Text>
+              <Text style={styles.heroText}>Jump back into the next item in your active course and keep momentum.</Text>
+              {courses[0] ? (
+                <TouchableOpacity style={styles.primaryButton} onPress={() => void handleContinueLearning(courses[0])} disabled={resolvingNext}>
+                  <Text style={styles.primaryButtonText}>{resolvingNext ? 'Loading...' : 'Continue Learning'}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Courses</Text>
+              <Text style={styles.sectionTitle}>Current enrolled courses</Text>
             </View>
 
             {courses.length === 0 ? (
@@ -90,11 +131,16 @@ export default function HomeScreen() {
                     <View style={styles.barTrack}>
                       <View style={[styles.barFill, { width: `${percent}%` }]} />
                     </View>
-                    <Link href={{ pathname: '/course/[id]', params: { id: String(course.id ?? course.course_id ?? 0) } }} asChild>
-                      <TouchableOpacity style={styles.primaryButton}>
-                        <Text style={styles.primaryButtonText}>Continue Learning</Text>
+                    <View style={styles.buttonRow}>
+                      <Link href={{ pathname: '/course/[id]', params: { id: String(course.id ?? course.course_id ?? 0) } }} asChild>
+                        <TouchableOpacity style={styles.secondaryButton}>
+                          <Text style={styles.secondaryButtonText}>Open course</Text>
+                        </TouchableOpacity>
+                      </Link>
+                      <TouchableOpacity style={styles.primaryButton} onPress={() => void handleContinueLearning(course)} disabled={resolvingNext}>
+                        <Text style={styles.primaryButtonText}>{resolvingNext ? 'Loading...' : 'Continue'}</Text>
                       </TouchableOpacity>
-                    </Link>
+                    </View>
                   </View>
                 );
               })
@@ -144,12 +190,12 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    gap: 12,
   },
   heroTitle: {
     color: theme.colors.text,
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 8,
   },
   heroText: {
     color: theme.colors.muted,
@@ -161,7 +207,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: theme.colors.text,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
   },
   courseCard: {
@@ -204,17 +250,39 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.gold,
     borderRadius: 999,
   },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   primaryButton: {
+    flex: 1,
     backgroundColor: theme.colors.gold,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 44,
+  },
+  secondaryButton: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
   },
   primaryButtonText: {
     color: theme.colors.background,
     fontSize: 14,
     fontWeight: '700',
+  },
+  secondaryButtonText: {
+    color: theme.colors.text,
+    fontSize: 14,
+    fontWeight: '600',
   },
   loadingBox: {
     backgroundColor: theme.colors.surface,

@@ -1,6 +1,7 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
@@ -12,35 +13,53 @@ export default function CourseDetailScreen() {
   const [curriculum, setCurriculum] = useState<any[]>([]);
   const [progress, setProgress] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    async function loadCourse() {
-      const token = await getStoredToken();
-      if (!token || !id) {
-        router.replace('/login');
-        return;
-      }
-
-      try {
-        const [courseData, curriculumData, progressData] = await Promise.all([
-          apiGetCourse(id, token),
-          apiGetCurriculum(id, token),
-          apiGetProgress(id, token).catch(() => null),
-        ]);
-
-        setCourse(courseData);
-        setCurriculum(Array.isArray(curriculumData) ? curriculumData : []);
-        setProgress(progressData);
-      } catch (err) {
-        setError(getErrorMessage(err));
-      } finally {
-        setLoading(false);
-      }
+  const loadCourse = useCallback(async () => {
+    const token = await getStoredToken();
+    if (!token || !id) {
+      router.replace('/login');
+      return;
     }
 
-    loadCourse();
+    try {
+      const [courseData, curriculumData, progressData] = await Promise.all([
+        apiGetCourse(id, token),
+        apiGetCurriculum(id, token),
+        apiGetProgress(id, token).catch(() => null),
+      ]);
+
+      setCourse(courseData);
+      setCurriculum(Array.isArray(curriculumData) ? curriculumData : []);
+      setProgress(progressData);
+      setError('');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadCourse();
+      return undefined;
+    }, [loadCourse]),
+  );
+
+  const sectionItems = useMemo(() => {
+    return curriculum.map((section: any, sectionIndex: number) => {
+      const title = cleanDisplayText(section.title || section.name || 'Module');
+      const items = deduplicateSectionItems(Array.isArray(section.items) ? section.items : []);
+      const completeCount = items.filter((item: any) => item.completed).length;
+      const key = `${title}-${sectionIndex}`;
+      const expanded = expandedSections[key] ?? false;
+      return { key, title, items, completeCount, expanded };
+    });
+  }, [curriculum, expandedSections]);
 
   const handleItemPress = (item: any) => {
     const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id;
@@ -59,13 +78,21 @@ export default function CourseDetailScreen() {
     router.push({ pathname: '/lesson/[id]', params: { id: String(item.id ?? item.lesson_id ?? itemId) } });
   };
 
-  const renderItem = ({ item, index }: { item: any; index: number }) => {
+  const getItemIcon = (type: string) => {
+    const normalized = String(type || '').toLowerCase();
+    if (normalized === 'quiz') return 'help-circle';
+    if (normalized === 'assignment' || normalized === 'project') return 'document-text';
+    return 'book';
+  };
+
+  const renderItem = (item: any) => {
     const type = String(item.type || '').toUpperCase();
     const title = cleanDisplayText(item.title || item.name || 'Untitled item');
     return (
-      <TouchableOpacity style={[styles.item, item.completed && styles.itemCompleted]} onPress={() => handleItemPress(item)}>
+      <TouchableOpacity key={String(item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id ?? title)} style={[styles.item, item.completed && styles.itemCompleted]} onPress={() => handleItemPress(item)}>
         <View style={styles.itemHeader}>
           <View style={[styles.dot, item.completed && styles.dotDone]} />
+          <Ionicons name={getItemIcon(item.type) as any} size={18} color={item.completed ? theme.colors.success : theme.colors.gold} />
           <View style={{ flex: 1 }}>
             <Text style={styles.itemTitle}>{title}</Text>
             <Text style={styles.itemMeta}>{type || 'LESSON'}</Text>
@@ -76,17 +103,33 @@ export default function CourseDetailScreen() {
     );
   };
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadCourse();
+  };
+
+  const toggleSection = (key: string) => {
+    setExpandedSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>Back</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push('/(tabs)')} style={styles.homeButton}>
+          <Ionicons name="home" size={18} color={theme.colors.text} />
+        </TouchableOpacity>
       </View>
       {loading ? (
         <View style={styles.loadingBox}><ActivityIndicator color={theme.colors.gold} size="large" /></View>
       ) : (
         <FlatList
           contentContainerStyle={styles.content}
-          data={curriculum}
+          data={sectionItems}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.gold} />}
           ListHeaderComponent={
             <>
               <Text style={styles.eyebrow}>Course</Text>
@@ -95,20 +138,26 @@ export default function CourseDetailScreen() {
               {error ? <Text style={styles.error}>{error}</Text> : null}
             </>
           }
-          renderItem={({ item, index }) => {
-            const sectionTitle = cleanDisplayText(item.title || item.name || 'Module');
-            const items = deduplicateSectionItems(Array.isArray(item.items) ? item.items : []);
-
+          renderItem={({ item }) => {
+            const open = item.expanded;
             return (
               <View style={styles.sectionBlock}>
-                <Text style={styles.sectionTitle}>{sectionTitle}</Text>
-                {items.length === 0 ? <Text style={styles.emptySmall}>No items in this section.</Text> : (
-                  <View style={styles.sectionList}>{items.map((entry: any, itemIndex: number) => <View key={String(entry.id ?? `${entry.type ?? 'item'}-${index}-${itemIndex}`)}>{renderItem({ item: entry, index: itemIndex })}</View>)}</View>
+                <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection(item.key)}>
+                  <View style={styles.sectionHeaderMeta}>
+                    <Text style={styles.sectionTitle}>{item.title}</Text>
+                    <Text style={styles.sectionComplete}>{item.completeCount}/{item.items.length} complete</Text>
+                  </View>
+                  <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={theme.colors.gold} />
+                </TouchableOpacity>
+                {open && (
+                  <View style={styles.sectionList}>
+                    {item.items.length === 0 ? <Text style={styles.emptySmall}>No items in this section.</Text> : item.items.map((entry: any) => renderItem(entry))}
+                  </View>
                 )}
               </View>
             );
           }}
-          keyExtractor={(item, index) => `${item.id ?? index}`}
+          keyExtractor={(item) => item.key}
           ListEmptyComponent={<Text style={styles.empty}>No curriculum items available.</Text>}
         />
       )}
@@ -122,13 +171,30 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 12,
   },
   backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     alignSelf: 'flex-start',
     paddingVertical: 8,
     paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    minHeight: 44,
+  },
+  homeButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 10,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
@@ -146,6 +212,7 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
     gap: 16,
+    paddingBottom: 40,
   },
   eyebrow: {
     color: theme.colors.gold,
@@ -173,10 +240,24 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sectionHeaderMeta: {
+    flex: 1,
+    gap: 4,
+  },
   sectionTitle: {
     color: theme.colors.text,
     fontSize: 18,
     fontWeight: '800',
+  },
+  sectionComplete: {
+    color: theme.colors.muted,
+    fontSize: 12,
   },
   sectionList: {
     gap: 10,
@@ -195,7 +276,7 @@ const styles = StyleSheet.create({
   itemHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   dot: {
     width: 12,
