@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -10,12 +11,20 @@ export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   async function handleRegister() {
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !confirmPassword) {
       setError('Please provide your name, email, and password.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
       return;
     }
 
@@ -45,9 +54,22 @@ export default function RegisterScreen() {
         </View>
 
         <View style={styles.card}>
-          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor={theme.colors.muted} />
-          <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Email address" keyboardType="email-address" autoCapitalize="none" placeholderTextColor={theme.colors.muted} />
-          <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry placeholderTextColor={theme.colors.muted} />
+          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor={theme.colors.muted} returnKeyType="next" />
+          <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Email address" keyboardType="email-address" autoCapitalize="none" placeholderTextColor={theme.colors.muted} returnKeyType="next" />
+
+          <View style={styles.passwordWrap}>
+            <TextInput style={styles.passwordInput} value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry={!showPassword} placeholderTextColor={theme.colors.muted} returnKeyType="next" />
+            <TouchableOpacity style={styles.eyeButton} onPress={() => setShowPassword((value) => !value)}>
+              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={theme.colors.muted} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.passwordWrap}>
+            <TextInput style={styles.passwordInput} value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" secureTextEntry={!showConfirmPassword} placeholderTextColor={theme.colors.muted} returnKeyType="done" />
+            <TouchableOpacity style={styles.eyeButton} onPress={() => setShowConfirmPassword((value) => !value)}>
+              <Ionicons name={showConfirmPassword ? 'eye-off' : 'eye'} size={20} color={theme.colors.muted} />
+            </TouchableOpacity>
+          </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -117,12 +139,35 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     fontSize: 16,
   },
+  passwordWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.input,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 14,
+    paddingRight: 10,
+  },
+  passwordInput: {
+    flex: 1,
+    color: theme.colors.text,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    fontSize: 16,
+  },
+  eyeButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   primaryButton: {
     marginTop: 8,
     backgroundColor: theme.colors.gold,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
+    minHeight: 48,
   },
   primaryButtonText: {
     color: theme.colors.background,
@@ -136,6 +181,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
     paddingVertical: 16,
     alignItems: 'center',
+    minHeight: 48,
   },
   secondaryButtonText: {
     color: theme.colors.text,

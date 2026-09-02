@@ -1,10 +1,10 @@
-import { Link, router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Link, router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
-import { apiGetCourses, decodeHtmlEntities, getErrorMessage, getStoredToken } from '@/src/lib/api';
+import { apiGetCoursesFresh, decodeHtmlEntities, getErrorMessage, getStoredToken } from '@/src/lib/api';
 
 export default function LearnScreen() {
   const [courses, setCourses] = useState<any[]>([]);
@@ -12,7 +12,7 @@ export default function LearnScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  async function loadCourses() {
+  const loadCourses = useCallback(async () => {
     const token = await getStoredToken();
     if (!token) {
       router.replace('/login');
@@ -20,7 +20,7 @@ export default function LearnScreen() {
     }
 
     try {
-      const courseList = await apiGetCourses(token);
+      const courseList = await apiGetCoursesFresh(token);
       setCourses(Array.isArray(courseList) ? courseList : []);
       setError('');
     } catch (err) {
@@ -29,11 +29,13 @@ export default function LearnScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }
-
-  useEffect(() => {
-    loadCourses();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadCourses();
+    }, [loadCourses]),
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -58,17 +60,18 @@ export default function LearnScreen() {
             const completed = Number(course.completed_items ?? 0);
             const total = Number(course.total_items ?? 0);
             const percent = total > 0 ? Math.min(100, Math.max(0, (completed / total) * 100)) : 0;
+            const hasProgress = total > 0 || completed > 0;
 
             return (
               <View key={course.id ?? course.course_id ?? course.title} style={styles.courseCard}>
                 <Text style={styles.courseTitle}>{decodeHtmlEntities(course.title || course.name || 'Course')}</Text>
-                <Text style={styles.metaText}>{completed} / {total} items completed</Text>
+                <Text style={styles.metaText}>{completed} / {total || 0} items completed</Text>
                 <View style={styles.barTrack}>
                   <View style={[styles.barFill, { width: `${percent}%` }]} />
                 </View>
                 <Link href={{ pathname: '/course/[id]', params: { id: String(course.id ?? course.course_id ?? 0) } }} asChild>
                   <TouchableOpacity style={styles.primaryButton}>
-                    <Text style={styles.primaryButtonText}>Open Course</Text>
+                    <Text style={styles.primaryButtonText}>{hasProgress ? 'Continue' : 'Open Course'}</Text>
                   </TouchableOpacity>
                 </Link>
               </View>
@@ -134,6 +137,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
   },
   primaryButtonText: {
     color: theme.colors.background,

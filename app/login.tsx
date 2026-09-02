@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
@@ -9,6 +10,7 @@ import { apiLogin, getErrorMessage } from '@/src/lib/api';
 export default function LoginScreen() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -53,15 +55,27 @@ export default function LoginScreen() {
             placeholderTextColor={theme.colors.muted}
             autoCapitalize="none"
             autoCorrect={false}
+            returnKeyType="next"
           />
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Password"
-            placeholderTextColor={theme.colors.muted}
-            secureTextEntry
-          />
+
+          <View style={styles.passwordWrap}>
+            <TextInput
+              style={styles.passwordInput}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Password"
+              placeholderTextColor={theme.colors.muted}
+              secureTextEntry={!showPassword}
+              returnKeyType="done"
+            />
+            <TouchableOpacity style={styles.eyeButton} onPress={() => setShowPassword((value) => !value)}>
+              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={theme.colors.muted} />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity onPress={() => Linking.openURL('https://globalrealestateacademy.org/wp-login.php?action=lostpassword')}>
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -131,6 +145,33 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     fontSize: 16,
   },
+  passwordWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.input,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingRight: 10,
+  },
+  passwordInput: {
+    flex: 1,
+    color: theme.colors.text,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    fontSize: 16,
+  },
+  eyeButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  forgotText: {
+    color: theme.colors.gold,
+    fontWeight: '600',
+    alignSelf: 'flex-end',
+  },
   primaryButton: {
     marginTop: 8,
     backgroundColor: theme.colors.gold,
@@ -138,6 +179,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 48,
   },
   primaryButtonText: {
     color: theme.colors.background,
@@ -151,6 +193,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
     paddingVertical: 16,
     alignItems: 'center',
+    minHeight: 48,
   },
   secondaryButtonText: {
     color: theme.colors.text,

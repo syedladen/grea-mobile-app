@@ -1,6 +1,7 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import RenderHTML from 'react-native-render-html';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -16,6 +17,7 @@ import {
     getStoredToken,
     isMasteriyoSyncFailure,
 } from '@/src/lib/api';
+import { flattenCurriculumItems, getCurriculumNavigationTarget } from '@/src/lib/curriculum-navigation';
 
 export default function QuizScreen() {
   const { width } = useWindowDimensions();
@@ -25,31 +27,36 @@ export default function QuizScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [result, setResult] = useState<any>(null);
+  const [syncWarning, setSyncWarning] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    async function loadQuiz() {
-      const token = await getStoredToken();
-      if (!token || !id) {
-        router.replace('/login');
-        return;
-      }
-
-      try {
-        const data = await apiGetQuiz(id, token);
-        setQuiz(data);
-        setQuestions(Array.isArray(data?.questions) ? data.questions : []);
-      } catch (err) {
-        setError(getErrorMessage(err));
-      } finally {
-        setLoading(false);
-      }
+  const loadQuiz = useCallback(async () => {
+    const token = await getStoredToken();
+    if (!token || !id) {
+      router.replace('/login');
+      return;
     }
 
-    loadQuiz();
+    try {
+      const data = await apiGetQuiz(id, token);
+      setQuiz(data);
+      setQuestions(Array.isArray(data?.questions) ? data.questions : []);
+      setError('');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadQuiz();
+      return undefined;
+    }, [loadQuiz]),
+  );
 
   const currentQuestion = questions[currentIndex];
   const questionId = currentQuestion?.id ?? currentQuestion?.questionId ?? String(currentIndex);
@@ -60,6 +67,45 @@ export default function QuizScreen() {
     const current = answers[questionId] ?? [];
     const next = current.includes(value) ? current.filter((item) => item !== value) : [value];
     setAnswers((prev) => ({ ...prev, [questionId]: next }));
+  }
+
+  function hasSuccessfulQuizResult(payload: unknown): boolean {
+    if (!payload || typeof payload !== 'object') {
+      return false;
+    }
+
+    const record = payload as Record<string, unknown>;
+    const result = record.result as Record<string, unknown> | undefined;
+
+    return (
+      typeof record.score === 'number' ||
+      typeof record.pass === 'boolean' ||
+      typeof record.passed === 'boolean' ||
+      typeof result?.score === 'number' ||
+      typeof result?.pass === 'boolean' ||
+      typeof result?.passed === 'boolean' ||
+      !!record.result
+    );
+  }
+
+  async function handleRetrySync() {
+    const token = await getStoredToken();
+    const courseId = quiz?.course_id ?? quiz?.courseId;
+    if (!token || !courseId) {
+      setSyncWarning('Unable to retry sync right now. Please try again later.');
+      return;
+    }
+
+    try {
+      await Promise.all([
+        apiGetProgress(courseId, token),
+        apiGetCurriculum(courseId, token),
+      ]);
+      setSyncWarning('');
+      setError('');
+    } catch (err) {
+      setSyncWarning(`Retry failed: ${getErrorMessage(err)}`);
+    }
   }
 
   async function handleSubmit() {
@@ -73,12 +119,19 @@ export default function QuizScreen() {
     try {
       setSubmitting(true);
       setError('');
+      setSyncWarning('');
       const payload = await apiSubmitQuiz(id, answers, token);
-      const syncFailed = isMasteriyoSyncFailure(payload);
 
-      if (syncFailed) {
+      if (__DEV__) {
+        console.log('[Quiz submit payload]', payload);
+      }
+
+      const syncFailed = isMasteriyoSyncFailure(payload);
+      const hasResult = hasSuccessfulQuizResult(payload);
+
+      if (syncFailed && !hasResult) {
         const backendError = extractMasteriyoError(payload);
-        setError(`Masteriyo sync failed: ${backendError}`);
+        setError(backendError || 'Submission could not be completed. Please try again.');
         setResult(null);
         return;
       }
@@ -92,12 +145,46 @@ export default function QuizScreen() {
       }
 
       setResult(payload);
+
+      if (syncFailed) {
+        setSyncWarning('Your quiz attempt was saved, but course progress could not be synchronized. Please retry.');
+      }
     } catch (err) {
       setError(getErrorMessage(err));
+      setSyncWarning('');
+      setResult(null);
     } finally {
       setSubmitting(false);
     }
   }
+
+  const goToNextItem = async () => {
+    const token = await getStoredToken();
+    const courseId = quiz?.course_id ?? quiz?.courseId;
+    if (!courseId || !token) {
+      router.push('/(tabs)');
+      return;
+    }
+
+    try {
+      const curriculum = await apiGetCurriculum(courseId, token);
+      const items = flattenCurriculumItems(curriculum);
+      const currentIndexInList = items.findIndex((item) => {
+        const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id;
+        return itemId !== undefined && String(itemId) === String(id);
+      });
+      const next = currentIndexInList >= 0 ? items[currentIndexInList + 1] : null;
+      const target = next ? getCurriculumNavigationTarget(next) : null;
+      if (target) {
+        router.push(target as any);
+        return;
+      }
+    } catch {
+      // ignore and fall back
+    }
+
+    router.push({ pathname: '/course/[id]', params: { id: String(courseId) } });
+  };
 
   if (loading) {
     return (
@@ -118,22 +205,44 @@ export default function QuizScreen() {
 
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.resultBox}>
-          <Text style={styles.resultTitle}>{pass ? 'Passed' : 'Not Passed'}</Text>
-          <Text style={styles.resultScore}>Score: {Number.isFinite(normalizedScore) ? `${Math.round(normalizedScore)}%` : '0%'}</Text>
-          <Text style={styles.resultMeta}>Pass mark: {Number.isFinite(normalizedPassMark) ? `${Math.round(normalizedPassMark)}%` : '0%'}</Text>
-          <Text style={styles.resultMeta}>{correctCount > 0 ? `Correct answers: ${correctCount}` : 'Correct answers: 0'}</Text>
-          <Text style={styles.resultMeta}>{pass ? 'You passed this quiz.' : 'You can retake the quiz and try again.'}</Text>
-          {pass ? (
-            <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
-              <Text style={styles.primaryButtonText}>Continue</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.primaryButton} onPress={() => { setResult(null); setAnswers({}); setCurrentIndex(0); setError(''); }}>
-              <Text style={styles.primaryButtonText}>Retake</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        <ScrollView contentContainerStyle={styles.resultScrollContent}>
+          <View style={styles.resultBox}>
+            <Text style={styles.eyebrow}>Quiz Result</Text>
+            <Text style={styles.resultTitle}>{pass ? 'Passed' : 'Not Passed'}</Text>
+            <Text style={styles.resultScore}>{Number.isFinite(normalizedScore) ? `${Math.round(normalizedScore)}%` : '0%'}</Text>
+            <Text style={styles.resultMeta}>Pass mark: {Number.isFinite(normalizedPassMark) ? `${Math.round(normalizedPassMark)}%` : '0%'}</Text>
+            <Text style={styles.resultMeta}>{correctCount > 0 ? `Correct answers: ${correctCount}` : 'Correct answers: 0'}</Text>
+            <Text style={styles.resultMeta}>{pass ? 'You passed this quiz.' : 'You can retake the quiz and try again.'}</Text>
+
+            {syncWarning ? (
+              <View style={styles.syncWarningBox}>
+                <Text style={styles.syncWarningText}>{syncWarning}</Text>
+                <TouchableOpacity style={styles.syncButton} onPress={() => void handleRetrySync()}>
+                  <Text style={styles.syncButtonText}>Retry Sync</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            <View style={styles.resultActions}>
+              {pass ? (
+                <TouchableOpacity style={styles.primaryButton} onPress={() => void goToNextItem()}>
+                  <Text style={styles.primaryButtonText}>Continue / Next Item</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.primaryButton} onPress={() => { setResult(null); setSyncWarning(''); setAnswers({}); setCurrentIndex(0); setError(''); }}>
+                  <Text style={styles.primaryButtonText}>Retake Quiz</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push({ pathname: '/course/[id]', params: { id: String(quiz?.course_id ?? quiz?.courseId ?? 0) } })}>
+                <Text style={styles.secondaryButtonText}>Back to Course</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.tertiaryButton} onPress={() => router.push('/(tabs)')}>
+                <Ionicons name="home" size={16} color={theme.colors.text} />
+                <Text style={styles.tertiaryButtonText}>Home</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -156,8 +265,14 @@ export default function QuizScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}><Text style={styles.backText}>Back</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
           <Text style={styles.progressText}>{currentIndex + 1}/{questions.length}</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)')} style={styles.homeButton}>
+            <Ionicons name="home" size={18} color={theme.colors.text} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.progressBar}><View style={[styles.progressFill, { width: `${progress}%` }]} /></View>
@@ -210,7 +325,7 @@ export default function QuizScreen() {
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={submitting}>
-              <Text style={styles.primaryButtonText}>{submitting ? 'Submitting...' : 'Submit'}</Text>
+              <Text style={styles.primaryButtonText}>{submitting ? 'Submitting...' : 'Submit Quiz'}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -237,20 +352,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 10,
   },
   backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 10,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
+    minHeight: 44,
   },
   backText: {
     color: theme.colors.text,
     fontWeight: '600',
   },
+  homeButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
   progressText: {
+    flex: 1,
+    textAlign: 'center',
     color: theme.colors.gold,
     fontWeight: '700',
   },
@@ -263,40 +395,41 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     backgroundColor: theme.colors.gold,
+    borderRadius: 999,
   },
   title: {
     color: theme.colors.text,
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '800',
-    lineHeight: 36,
   },
   optionList: {
     gap: 12,
   },
   option: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: theme.colors.surface,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
+    padding: 14,
     gap: 12,
+    minHeight: 52,
   },
   optionSelected: {
     borderColor: theme.colors.gold,
-    backgroundColor: '#1B1A11',
+    backgroundColor: '#1A1A15',
   },
   radio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 2,
     borderColor: theme.colors.muted,
   },
   radioSelected: {
-    backgroundColor: theme.colors.gold,
     borderColor: theme.colors.gold,
+    backgroundColor: theme.colors.gold,
   },
   optionText: {
     color: theme.colors.text,
@@ -312,51 +445,50 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.gold,
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 48,
   },
   primaryButtonText: {
     color: theme.colors.background,
+    fontSize: 15,
     fontWeight: '700',
-    fontSize: 16,
   },
   secondaryButton: {
     flex: 1,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.background,
     borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: theme.colors.border,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
   },
   secondaryButtonText: {
     color: theme.colors.text,
     fontWeight: '700',
   },
-  secondaryPlaceholder: {
-    flex: 1,
-  },
-  resultBox: {
-    flex: 1,
+  tertiaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-    gap: 16,
+    gap: 8,
+    backgroundColor: 'transparent',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 48,
   },
-  resultTitle: {
+  tertiaryButtonText: {
     color: theme.colors.text,
-    fontSize: 32,
-    fontWeight: '800',
-  },
-  resultScore: {
-    color: theme.colors.gold,
-    fontSize: 22,
     fontWeight: '700',
   },
-  resultMeta: {
-    color: theme.colors.muted,
-    fontSize: 16,
-    lineHeight: 24,
+  secondaryPlaceholder: {
+    flex: 1,
   },
   error: {
     color: theme.colors.danger,
@@ -366,13 +498,80 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#5A2A2A',
   },
+  resultScrollContent: {
+    padding: 20,
+    paddingBottom: 28,
+  },
+  resultBox: {
+    alignSelf: 'stretch',
+    backgroundColor: theme.colors.surface,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: 20,
+    gap: 12,
+    minHeight: 0,
+  },
+  eyebrow: {
+    color: theme.colors.gold,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  resultTitle: {
+    color: theme.colors.text,
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  resultScore: {
+    color: theme.colors.gold,
+    fontSize: 28,
+    fontWeight: '800',
+    lineHeight: 34,
+  },
+  resultMeta: {
+    color: theme.colors.muted,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  syncWarningBox: {
+    backgroundColor: '#201813',
+    borderWidth: 1,
+    borderColor: '#5F4733',
+    borderRadius: 14,
+    padding: 12,
+    gap: 10,
+  },
+  syncWarningText: {
+    color: '#F9D8A7',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  syncButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#2A211B',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  syncButtonText: {
+    color: theme.colors.text,
+    fontWeight: '700',
+  },
+  resultActions: {
+    gap: 12,
+    marginTop: 8,
+  },
   emptyBox: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   emptyText: {
-    color: theme.colors.muted,
+    color: theme.colors.text,
     fontSize: 16,
   },
 });
