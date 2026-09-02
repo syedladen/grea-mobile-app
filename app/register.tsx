@@ -4,10 +4,13 @@ import { useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LanguageSwitcher } from '@/components/language-switcher';
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 import { apiRegister, getErrorMessage } from '@/src/lib/api';
 
 export default function RegisterScreen() {
+  const { t, isRTL } = useLanguage();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,12 +22,12 @@ export default function RegisterScreen() {
 
   async function handleRegister() {
     if (!name || !email || !password || !confirmPassword) {
-      setError('Please provide your name, email, and password.');
+      setError(t('pleaseProvideDetails'));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError(t('passwordsDoNotMatch'));
       return;
     }
 
@@ -36,7 +39,7 @@ export default function RegisterScreen() {
         router.replace('/(tabs)');
         return;
       }
-      setError(payload.message || 'Registration failed.');
+      setError(payload.message || t('registrationFailed'));
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -47,25 +50,26 @@ export default function RegisterScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <LanguageSwitcher />
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Join GREA</Text>
-          <Text style={styles.title}>Create your account</Text>
-          <Text style={styles.subtitle}>Start your premium learning experience.</Text>
+          <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{t('registerTitle')}</Text>
+          <Text style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t('registerSubtitle')}</Text>
         </View>
 
         <View style={styles.card}>
-          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor={theme.colors.muted} returnKeyType="next" />
-          <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Email address" keyboardType="email-address" autoCapitalize="none" placeholderTextColor={theme.colors.muted} returnKeyType="next" />
+          <TextInput style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]} value={name} onChangeText={setName} placeholder={t('fullName')} placeholderTextColor={theme.colors.muted} returnKeyType="next" />
+          <TextInput style={[styles.input, { textAlign: isRTL ? 'right' : 'left' }]} value={email} onChangeText={setEmail} placeholder={t('emailAddress')} keyboardType="email-address" autoCapitalize="none" placeholderTextColor={theme.colors.muted} returnKeyType="next" />
 
           <View style={styles.passwordWrap}>
-            <TextInput style={styles.passwordInput} value={password} onChangeText={setPassword} placeholder="Password" secureTextEntry={!showPassword} placeholderTextColor={theme.colors.muted} returnKeyType="next" />
+            <TextInput style={[styles.passwordInput, { textAlign: isRTL ? 'right' : 'left' }]} value={password} onChangeText={setPassword} placeholder={t('password')} secureTextEntry={!showPassword} placeholderTextColor={theme.colors.muted} returnKeyType="next" />
             <TouchableOpacity style={styles.eyeButton} onPress={() => setShowPassword((value) => !value)}>
               <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={theme.colors.muted} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.passwordWrap}>
-            <TextInput style={styles.passwordInput} value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm password" secureTextEntry={!showConfirmPassword} placeholderTextColor={theme.colors.muted} returnKeyType="done" />
+            <TextInput style={[styles.passwordInput, { textAlign: isRTL ? 'right' : 'left' }]} value={confirmPassword} onChangeText={setConfirmPassword} placeholder={t('confirmPassword')} secureTextEntry={!showConfirmPassword} placeholderTextColor={theme.colors.muted} returnKeyType="done" />
             <TouchableOpacity style={styles.eyeButton} onPress={() => setShowConfirmPassword((value) => !value)}>
               <Ionicons name={showConfirmPassword ? 'eye-off' : 'eye'} size={20} color={theme.colors.muted} />
             </TouchableOpacity>
@@ -74,12 +78,12 @@ export default function RegisterScreen() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <TouchableOpacity style={styles.primaryButton} onPress={handleRegister} disabled={loading}>
-            {loading ? <ActivityIndicator color={theme.colors.background} /> : <Text style={styles.primaryButtonText}>Create account</Text>}
+            {loading ? <ActivityIndicator color={theme.colors.background} /> : <Text style={styles.primaryButtonText}>{t('createAccount')}</Text>}
           </TouchableOpacity>
 
           <Link href="/login" asChild>
             <TouchableOpacity style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonText}>I already have an account</Text>
+              <Text style={styles.secondaryButtonText}>{t('alreadyHaveAccount')}</Text>
             </TouchableOpacity>
           </Link>
         </View>

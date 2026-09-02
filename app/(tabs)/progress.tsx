@@ -4,9 +4,11 @@ import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, Toucha
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 import { apiGetCoursesFresh, apiGetProgressFresh, decodeHtmlEntities, getErrorMessage, getStoredToken } from '@/src/lib/api';
 
 export default function ProgressScreen() {
+  const { t, isRTL } = useLanguage();
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -16,7 +18,7 @@ export default function ProgressScreen() {
     try {
       const token = await getStoredToken();
       if (!token) {
-        setError('Not authenticated');
+        setError(t('notAuthenticated'));
         setLoading(false);
         return;
       }
@@ -40,7 +42,7 @@ export default function ProgressScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useFocusEffect(
     useCallback(() => {
@@ -59,13 +61,13 @@ export default function ProgressScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.gold} />}
       >
-        <Text style={styles.title}>Progress</Text>
+        <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{t('progress')}</Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {loading ? (
           <View style={styles.loadingBox}><ActivityIndicator color={theme.colors.gold} size="large" /></View>
         ) : courses.length === 0 ? (
-          <View style={styles.emptyCard}><Text style={styles.emptyText}>No courses in progress yet.</Text></View>
+          <View style={styles.emptyCard}><Text style={styles.emptyText}>{t('noCoursesInProgress')}</Text></View>
         ) : (
           courses.map((course: any) => (
             <TouchableOpacity
@@ -75,7 +77,7 @@ export default function ProgressScreen() {
             >
               <Text style={styles.cardTitle}>{decodeHtmlEntities(course.title || course.name || 'Course')}</Text>
               <Text style={styles.percent}>{course.progress ?? 0}%</Text>
-              <Text style={styles.meta}>{course.completed ?? 0} of {course.total ?? 0} items completed</Text>
+              <Text style={[styles.meta, { textAlign: isRTL ? 'right' : 'left' }]}>{t('itemsCompleted', { completed: course.completed ?? 0, total: course.total ?? 0 })}</Text>
               <View style={styles.barTrack}>
                 <View style={[styles.barFill, { width: `${course.progress ?? 0}%` }]} />
               </View>

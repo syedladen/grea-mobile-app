@@ -4,10 +4,13 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LanguageSwitcher } from '@/components/language-switcher';
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 import { apiGetCourses, apiGetMe, apiLogout, clearStoredToken, decodeHtmlEntities, getErrorMessage, getStoredToken, resolveAvatarUrl, resolveDisplayName } from '@/src/lib/api';
 
 export default function ProfileScreen() {
+  const { t, isRTL } = useLanguage();
   const [user, setUser] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,7 +63,8 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Profile</Text>
+        <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{t('profile')}</Text>
+        <View style={styles.card}><LanguageSwitcher /></View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -80,48 +84,48 @@ export default function ProfileScreen() {
 
             <View style={styles.statsGrid}>
               <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Courses</Text>
+                <Text style={styles.statLabel}>{t('courses')}</Text>
                 <Text style={styles.statValue}>{courses.length}</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Completed</Text>
+                <Text style={styles.statLabel}>{t('completed')}</Text>
                 <Text style={styles.statValue}>{completedItems}</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Total</Text>
+                <Text style={styles.statLabel}>{t('total')}</Text>
                 <Text style={styles.statValue}>{totalItems}</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={styles.statLabel}>Progress</Text>
+                <Text style={styles.statLabel}>{t('progress')}</Text>
                 <Text style={styles.statValue}>{Math.round(overallPercent)}%</Text>
               </View>
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Quick links</Text>
+              <Text style={styles.sectionTitle}>{t('quickLinks')}</Text>
               <View style={styles.linkRow}>
                 <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push('/(tabs)/learn')}>
-                  <Text style={styles.secondaryButtonText}>My Learning</Text>
+                  <Text style={styles.secondaryButtonText}>{t('myLearning')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push('/(tabs)/progress')}>
-                  <Text style={styles.secondaryButtonText}>Progress</Text>
+                  <Text style={styles.secondaryButtonText}>{t('progress')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Account</Text>
-              <Text style={styles.infoRow}><Text style={styles.infoLabel}>Name:</Text> {decodeHtmlEntities(resolveDisplayName(user))}</Text>
-              <Text style={styles.infoRow}><Text style={styles.infoLabel}>Email:</Text> {user?.email || 'No email available'}</Text>
-              <Text style={styles.infoRow}><Text style={styles.infoLabel}>App:</Text> GREA Learn</Text>
-              <Text style={styles.infoRow}><Text style={styles.infoLabel}>Version:</Text> {version}</Text>
+              <Text style={styles.sectionTitle}>{t('account')}</Text>
+              <Text style={styles.infoRow}><Text style={styles.infoLabel}>{t('fullName')}:</Text> {decodeHtmlEntities(resolveDisplayName(user))}</Text>
+              <Text style={styles.infoRow}><Text style={styles.infoLabel}>{t('email')}:</Text> {user?.email || t('noEmail')}</Text>
+              <Text style={styles.infoRow}><Text style={styles.infoLabel}>{t('app')}:</Text> GREA Learn</Text>
+              <Text style={styles.infoRow}><Text style={styles.infoLabel}>{t('version')}:</Text> {version}</Text>
               <TouchableOpacity onPress={() => Linking.openURL('https://globalrealestateacademy.org')} style={styles.siteButton}>
-                <Text style={styles.siteButtonText}>Academy website</Text>
+                <Text style={styles.siteButtonText}>{t('academyWebsite')}</Text>
               </TouchableOpacity>
             </View>
 
             <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-              <Text style={styles.logoutButtonText}>Logout</Text>
+              <Text style={styles.logoutButtonText}>{t('logout')}</Text>
             </TouchableOpacity>
           </>
         )}

@@ -4,10 +4,13 @@ import { useState } from 'react';
 import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LanguageSwitcher } from '@/components/language-switcher';
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 import { apiLogin, getErrorMessage } from '@/src/lib/api';
 
 export default function LoginScreen() {
+  const { t, isRTL } = useLanguage();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -16,7 +19,7 @@ export default function LoginScreen() {
 
   async function handleLogin() {
     if (!identifier || !password) {
-      setError('Please enter your email or username and password.');
+      setError(t('pleaseEnterCredentials'));
       return;
     }
 
@@ -29,7 +32,7 @@ export default function LoginScreen() {
         return;
       }
 
-      setError(payload.message || 'Login failed.');
+      setError(payload.message || t('loginFailed'));
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -40,10 +43,11 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <LanguageSwitcher />
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Global Real Estate Academy</Text>
-          <Text style={styles.title}>Welcome back</Text>
-          <Text style={styles.subtitle}>Sign in to continue your learning journey.</Text>
+          <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{t('welcomeBack')}</Text>
+          <Text style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t('loginSubtitle')}</Text>
         </View>
 
         <View style={styles.card}>
@@ -51,7 +55,7 @@ export default function LoginScreen() {
             style={styles.input}
             value={identifier}
             onChangeText={setIdentifier}
-            placeholder="Email or username"
+            placeholder={t('emailOrUsername')}
             placeholderTextColor={theme.colors.muted}
             autoCapitalize="none"
             autoCorrect={false}
@@ -63,7 +67,7 @@ export default function LoginScreen() {
               style={styles.passwordInput}
               value={password}
               onChangeText={setPassword}
-              placeholder="Password"
+              placeholder={t('password')}
               placeholderTextColor={theme.colors.muted}
               secureTextEntry={!showPassword}
               returnKeyType="done"
@@ -74,18 +78,18 @@ export default function LoginScreen() {
           </View>
 
           <TouchableOpacity onPress={() => Linking.openURL('https://globalrealestateacademy.org/wp-login.php?action=lostpassword')}>
-            <Text style={styles.forgotText}>Forgot password?</Text>
+            <Text style={styles.forgotText}>{t('forgotPassword')}</Text>
           </TouchableOpacity>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <TouchableOpacity style={styles.primaryButton} onPress={handleLogin} disabled={loading}>
-            {loading ? <ActivityIndicator color={theme.colors.background} /> : <Text style={styles.primaryButtonText}>Log in</Text>}
+            {loading ? <ActivityIndicator color={theme.colors.background} /> : <Text style={styles.primaryButtonText}>{t('login')}</Text>}
           </TouchableOpacity>
 
           <Link href="/register" asChild>
             <TouchableOpacity style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonText}>Create account</Text>
+              <Text style={styles.secondaryButtonText}>{t('createAccount')}</Text>
             </TouchableOpacity>
           </Link>
         </View>

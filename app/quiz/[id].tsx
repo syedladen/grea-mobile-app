@@ -6,6 +6,7 @@ import RenderHTML from 'react-native-render-html';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 import {
     apiGetCurriculum,
     apiGetProgress,
@@ -20,6 +21,7 @@ import {
 import { flattenCurriculumItems, getCurriculumNavigationTarget } from '@/src/lib/curriculum-navigation';
 
 export default function QuizScreen() {
+  const { t, isRTL } = useLanguage();
   const { width } = useWindowDimensions();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [quiz, setQuiz] = useState<any>(null);
@@ -92,7 +94,7 @@ export default function QuizScreen() {
     const token = await getStoredToken();
     const courseId = quiz?.course_id ?? quiz?.courseId;
     if (!token || !courseId) {
-      setSyncWarning('Unable to retry sync right now. Please try again later.');
+      setSyncWarning(t('retryLater'));
       return;
     }
 
@@ -104,7 +106,7 @@ export default function QuizScreen() {
       setSyncWarning('');
       setError('');
     } catch (err) {
-      setSyncWarning(`Retry failed: ${getErrorMessage(err)}`);
+      setSyncWarning(t('retryFailed', { message: getErrorMessage(err) }));
     }
   }
 
@@ -112,7 +114,7 @@ export default function QuizScreen() {
     if (!id || submitting) return;
     const token = await getStoredToken();
     if (!token) {
-      setError('Authentication required.');
+      setError(t('authenticationRequired'));
       return;
     }
 
@@ -131,7 +133,7 @@ export default function QuizScreen() {
 
       if (syncFailed && !hasResult) {
         const backendError = extractMasteriyoError(payload);
-        setError(backendError || 'Submission could not be completed. Please try again.');
+        setError(backendError || t('somethingWentWrong'));
         setResult(null);
         return;
       }
@@ -147,7 +149,7 @@ export default function QuizScreen() {
       setResult(payload);
 
       if (syncFailed) {
-        setSyncWarning('Your quiz attempt was saved, but course progress could not be synchronized. Please retry.');
+        setSyncWarning(t('retryLater'));
       }
     } catch (err) {
       setError(getErrorMessage(err));
@@ -207,18 +209,18 @@ export default function QuizScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.resultScrollContent}>
           <View style={styles.resultBox}>
-            <Text style={styles.eyebrow}>Quiz Result</Text>
-            <Text style={styles.resultTitle}>{pass ? 'Passed' : 'Not Passed'}</Text>
+            <Text style={styles.eyebrow}>{t('quizResult')}</Text>
+            <Text style={styles.resultTitle}>{pass ? t('passed') : t('notPassed')}</Text>
             <Text style={styles.resultScore}>{Number.isFinite(normalizedScore) ? `${Math.round(normalizedScore)}%` : '0%'}</Text>
-            <Text style={styles.resultMeta}>Pass mark: {Number.isFinite(normalizedPassMark) ? `${Math.round(normalizedPassMark)}%` : '0%'}</Text>
-            <Text style={styles.resultMeta}>{correctCount > 0 ? `Correct answers: ${correctCount}` : 'Correct answers: 0'}</Text>
-            <Text style={styles.resultMeta}>{pass ? 'You passed this quiz.' : 'You can retake the quiz and try again.'}</Text>
+            <Text style={styles.resultMeta}>{t('passMark')}: {Number.isFinite(normalizedPassMark) ? `${Math.round(normalizedPassMark)}%` : '0%'}</Text>
+            <Text style={styles.resultMeta}>{t('correctAnswers')}: {correctCount}</Text>
+            <Text style={styles.resultMeta}>{pass ? t('passed') : t('retakeQuiz')}</Text>
 
             {syncWarning ? (
               <View style={styles.syncWarningBox}>
                 <Text style={styles.syncWarningText}>{syncWarning}</Text>
                 <TouchableOpacity style={styles.syncButton} onPress={() => void handleRetrySync()}>
-                  <Text style={styles.syncButtonText}>Retry Sync</Text>
+                  <Text style={styles.syncButtonText}>{t('retrySync')}</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -226,19 +228,19 @@ export default function QuizScreen() {
             <View style={styles.resultActions}>
               {pass ? (
                 <TouchableOpacity style={styles.primaryButton} onPress={() => void goToNextItem()}>
-                  <Text style={styles.primaryButtonText}>Continue / Next Item</Text>
+                  <Text style={styles.primaryButtonText}>{t('continueNextItem')}</Text>
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity style={styles.primaryButton} onPress={() => { setResult(null); setSyncWarning(''); setAnswers({}); setCurrentIndex(0); setError(''); }}>
-                  <Text style={styles.primaryButtonText}>Retake Quiz</Text>
+                  <Text style={styles.primaryButtonText}>{t('retakeQuiz')}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push({ pathname: '/course/[id]', params: { id: String(quiz?.course_id ?? quiz?.courseId ?? 0) } })}>
-                <Text style={styles.secondaryButtonText}>Back to Course</Text>
+                <Text style={styles.secondaryButtonText}>{t('backToCourse')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.tertiaryButton} onPress={() => router.push('/(tabs)')}>
                 <Ionicons name="home" size={16} color={theme.colors.text} />
-                <Text style={styles.tertiaryButtonText}>Home</Text>
+                <Text style={styles.tertiaryButtonText}>{t('home')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -250,7 +252,7 @@ export default function QuizScreen() {
   if (!currentQuestion) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.emptyBox}><Text style={styles.emptyText}>No quiz questions found.</Text></View>
+        <View style={styles.emptyBox}><Text style={styles.emptyText}>{t('noQuizQuestions')}</Text></View>
       </SafeAreaView>
     );
   }
@@ -267,7 +269,7 @@ export default function QuizScreen() {
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
-            <Text style={styles.backText}>Back</Text>
+            <Text style={styles.backText}>{t('back')}</Text>
           </TouchableOpacity>
           <Text style={styles.progressText}>{currentIndex + 1}/{questions.length}</Text>
           <TouchableOpacity onPress={() => router.push('/(tabs)')} style={styles.homeButton}>
@@ -306,7 +308,7 @@ export default function QuizScreen() {
             return (
               <TouchableOpacity key={`${questionId}-${index}`} style={[styles.option, selected && styles.optionSelected]} onPress={() => toggleChoice(choice)}>
                 <View style={[styles.radio, selected && styles.radioSelected]} />
-                <Text style={styles.optionText}>{cleanDisplayText(choice.label ?? choice.text ?? choice.value ?? `Choice ${index + 1}`)}</Text>
+                <Text style={[styles.optionText, { textAlign: isRTL ? 'right' : 'left' }]}>{cleanDisplayText(choice.label ?? choice.text ?? choice.value ?? t('choice', { number: index + 1 }))}</Text>
               </TouchableOpacity>
             );
           })}
@@ -315,17 +317,17 @@ export default function QuizScreen() {
         <View style={styles.footerRow}>
           {currentIndex > 0 ? (
             <TouchableOpacity style={styles.secondaryButton} onPress={() => setCurrentIndex((prev) => prev - 1)}>
-              <Text style={styles.secondaryButtonText}>Previous</Text>
+              <Text style={styles.secondaryButtonText}>{t('previous')}</Text>
             </TouchableOpacity>
           ) : <View style={styles.secondaryPlaceholder} />}
 
           {currentIndex < questions.length - 1 ? (
             <TouchableOpacity style={styles.primaryButton} onPress={() => setCurrentIndex((prev) => prev + 1)}>
-              <Text style={styles.primaryButtonText}>Next</Text>
+              <Text style={styles.primaryButtonText}>{t('next')}</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={submitting}>
-              <Text style={styles.primaryButtonText}>{submitting ? 'Submitting...' : 'Submit Quiz'}</Text>
+              <Text style={styles.primaryButtonText}>{submitting ? t('loading') : t('submitQuiz')}</Text>
             </TouchableOpacity>
           )}
         </View>

@@ -4,9 +4,11 @@ import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, Toucha
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 import { apiGetCoursesFresh, decodeHtmlEntities, getErrorMessage, getStoredToken } from '@/src/lib/api';
 
 export default function LearnScreen() {
+  const { t, isRTL } = useLanguage();
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -48,13 +50,13 @@ export default function LearnScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.gold} />}
       >
-        <Text style={styles.title}>Learn</Text>
+        <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{t('learn')}</Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {loading ? (
           <View style={styles.loadingBox}><ActivityIndicator size="large" color={theme.colors.gold} /></View>
         ) : courses.length === 0 ? (
-          <View style={styles.emptyCard}><Text style={styles.emptyText}>No courses available.</Text></View>
+          <View style={styles.emptyCard}><Text style={styles.emptyText}>{t('noCoursesAvailable')}</Text></View>
         ) : (
           courses.map((course: any) => {
             const completed = Number(course.completed_items ?? 0);
@@ -65,13 +67,13 @@ export default function LearnScreen() {
             return (
               <View key={course.id ?? course.course_id ?? course.title} style={styles.courseCard}>
                 <Text style={styles.courseTitle}>{decodeHtmlEntities(course.title || course.name || 'Course')}</Text>
-                <Text style={styles.metaText}>{completed} / {total || 0} items completed</Text>
+                <Text style={[styles.metaText, { textAlign: isRTL ? 'right' : 'left' }]}>{t('itemsCompleted', { completed, total: total || 0 })}</Text>
                 <View style={styles.barTrack}>
                   <View style={[styles.barFill, { width: `${percent}%` }]} />
                 </View>
                 <Link href={{ pathname: '/course/[id]', params: { id: String(course.id ?? course.course_id ?? 0) } }} asChild>
                   <TouchableOpacity style={styles.primaryButton}>
-                    <Text style={styles.primaryButtonText}>{hasProgress ? 'Continue' : 'Open Course'}</Text>
+                    <Text style={styles.primaryButtonText}>{hasProgress ? t('continue') : t('openCourse')}</Text>
                   </TouchableOpacity>
                 </Link>
               </View>

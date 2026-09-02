@@ -5,9 +5,11 @@ import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, Touchabl
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 import { apiGetCourse, apiGetCurriculum, apiGetProgress, cleanDisplayText, deduplicateSectionItems, getErrorMessage, getStoredToken } from '@/src/lib/api';
 
 export default function CourseDetailScreen() {
+  const { t, isRTL } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [course, setCourse] = useState<any>(null);
   const [curriculum, setCurriculum] = useState<any[]>([]);
@@ -52,14 +54,14 @@ export default function CourseDetailScreen() {
 
   const sectionItems = useMemo(() => {
     return curriculum.map((section: any, sectionIndex: number) => {
-      const title = cleanDisplayText(section.title || section.name || 'Module');
+      const title = cleanDisplayText(section.title || section.name || t('module'));
       const items = deduplicateSectionItems(Array.isArray(section.items) ? section.items : []);
       const completeCount = items.filter((item: any) => item.completed).length;
       const key = `${title}-${sectionIndex}`;
       const expanded = expandedSections[key] ?? false;
       return { key, title, items, completeCount, expanded };
     });
-  }, [curriculum, expandedSections]);
+  }, [curriculum, expandedSections, t]);
 
   const handleItemPress = (item: any) => {
     const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id;
@@ -87,7 +89,7 @@ export default function CourseDetailScreen() {
 
   const renderItem = (item: any) => {
     const type = String(item.type || '').toUpperCase();
-    const title = cleanDisplayText(item.title || item.name || 'Untitled item');
+    const title = cleanDisplayText(item.title || item.name || t('lesson'));
     return (
       <TouchableOpacity key={String(item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id ?? title)} style={[styles.item, item.completed && styles.itemCompleted]} onPress={() => handleItemPress(item)}>
         <View style={styles.itemHeader}>
@@ -117,7 +119,7 @@ export default function CourseDetailScreen() {
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{t('back')}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => router.push('/(tabs)')} style={styles.homeButton}>
           <Ionicons name="home" size={18} color={theme.colors.text} />
@@ -132,9 +134,9 @@ export default function CourseDetailScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.gold} />}
           ListHeaderComponent={
             <>
-              <Text style={styles.eyebrow}>Course</Text>
-              <Text style={styles.title}>{cleanDisplayText(course?.title || course?.name || 'Course details')}</Text>
-              <Text style={styles.progressLabel}>{progress ? `${progress.progress ?? progress.percentage ?? 0}% complete` : 'Progress unavailable'}</Text>
+              <Text style={[styles.eyebrow, { textAlign: isRTL ? 'right' : 'left' }]}>{t('course')}</Text>
+              <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{cleanDisplayText(course?.title || course?.name || t('course'))}</Text>
+              <Text style={[styles.progressLabel, { textAlign: isRTL ? 'right' : 'left' }]}>{progress ? `${progress.progress ?? progress.percentage ?? 0}% ${t('complete')}` : t('progressUnavailable')}</Text>
               {error ? <Text style={styles.error}>{error}</Text> : null}
             </>
           }
@@ -142,23 +144,23 @@ export default function CourseDetailScreen() {
             const open = item.expanded;
             return (
               <View style={styles.sectionBlock}>
-                <TouchableOpacity style={styles.sectionHeader} onPress={() => toggleSection(item.key)}>
+                <TouchableOpacity style={[styles.sectionHeader, { flexDirection: isRTL ? 'row-reverse' : 'row' }]} onPress={() => toggleSection(item.key)}>
                   <View style={styles.sectionHeaderMeta}>
                     <Text style={styles.sectionTitle}>{item.title}</Text>
-                    <Text style={styles.sectionComplete}>{item.completeCount}/{item.items.length} complete</Text>
+                    <Text style={[styles.sectionComplete, { textAlign: isRTL ? 'right' : 'left' }]}>{item.completeCount}/{item.items.length} {t('complete')}</Text>
                   </View>
                   <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={theme.colors.gold} />
                 </TouchableOpacity>
                 {open && (
                   <View style={styles.sectionList}>
-                    {item.items.length === 0 ? <Text style={styles.emptySmall}>No items in this section.</Text> : item.items.map((entry: any) => renderItem(entry))}
+                    {item.items.length === 0 ? <Text style={styles.emptySmall}>{t('noItemsInSection')}</Text> : item.items.map((entry: any) => renderItem(entry))}
                   </View>
                 )}
               </View>
             );
           }}
           keyExtractor={(item) => item.key}
-          ListEmptyComponent={<Text style={styles.empty}>No curriculum items available.</Text>}
+          ListEmptyComponent={<Text style={styles.empty}>{t('noCurriculumItems')}</Text>}
         />
       )}
     </SafeAreaView>

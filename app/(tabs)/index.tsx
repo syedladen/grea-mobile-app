@@ -4,10 +4,12 @@ import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, Toucha
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 import { apiGetCoursesFresh, apiGetCurriculumFresh, apiGetMe, decodeHtmlEntities, getErrorMessage, getStoredToken, resolveDisplayName } from '@/src/lib/api';
 import { findFirstUnfinishedItem, getCurriculumNavigationTarget } from '@/src/lib/curriculum-navigation';
 
 export default function HomeScreen() {
+  const { t, isRTL } = useLanguage();
   const [user, setUser] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,9 +51,9 @@ export default function HomeScreen() {
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 12) return t('morning');
+    if (hour < 18) return t('afternoon');
+    return t('evening');
   };
 
   const handleContinueLearning = async (course: any) => {
@@ -88,8 +90,8 @@ export default function HomeScreen() {
       >
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.eyebrow}>{getGreeting()}</Text>
-            <Text style={styles.title}>{resolveDisplayName(user)}</Text>
+            <Text style={[styles.eyebrow, { textAlign: isRTL ? 'right' : 'left' }]}>{getGreeting()}</Text>
+            <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{resolveDisplayName(user)}</Text>
           </View>
         </View>
 
@@ -100,21 +102,21 @@ export default function HomeScreen() {
         ) : (
           <>
             <View style={styles.heroCard}>
-              <Text style={styles.heroTitle}>Continue learning</Text>
-              <Text style={styles.heroText}>Jump back into the next item in your active course and keep momentum.</Text>
+              <Text style={[styles.heroTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t('continueLearning')}</Text>
+              <Text style={[styles.heroText, { textAlign: isRTL ? 'right' : 'left' }]}>{t('continueLearningDescription')}</Text>
               {courses[0] ? (
                 <TouchableOpacity style={styles.primaryButton} onPress={() => void handleContinueLearning(courses[0])} disabled={resolvingNext}>
-                  <Text style={styles.primaryButtonText}>{resolvingNext ? 'Loading...' : 'Continue Learning'}</Text>
+                  <Text style={styles.primaryButtonText}>{resolvingNext ? t('loading') : t('continueLearning')}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
 
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Current enrolled courses</Text>
+              <Text style={[styles.sectionTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{t('currentEnrolledCourses')}</Text>
             </View>
 
             {courses.length === 0 ? (
-              <View style={styles.emptyCard}><Text style={styles.emptyText}>No courses found yet.</Text></View>
+              <View style={styles.emptyCard}><Text style={styles.emptyText}>{t('noCoursesFound')}</Text></View>
             ) : (
               courses.map((course: any) => {
                 const completed = Number(course.completed_items ?? 0);
@@ -127,18 +129,18 @@ export default function HomeScreen() {
                       <Text style={styles.courseTitle}>{decodeHtmlEntities(course.title || course.name || 'Course')}</Text>
                       <Text style={styles.progressText}>{Math.round(percent)}%</Text>
                     </View>
-                    <Text style={styles.metaText}>{completed} / {total} items completed</Text>
+                    <Text style={[styles.metaText, { textAlign: isRTL ? 'right' : 'left' }]}>{t('itemsCompleted', { completed, total })}</Text>
                     <View style={styles.barTrack}>
                       <View style={[styles.barFill, { width: `${percent}%` }]} />
                     </View>
                     <View style={styles.buttonRow}>
                       <Link href={{ pathname: '/course/[id]', params: { id: String(course.id ?? course.course_id ?? 0) } }} asChild>
                         <TouchableOpacity style={styles.secondaryButton}>
-                          <Text style={styles.secondaryButtonText}>Open course</Text>
+                          <Text style={styles.secondaryButtonText}>{t('openCourse')}</Text>
                         </TouchableOpacity>
                       </Link>
                       <TouchableOpacity style={styles.primaryButton} onPress={() => void handleContinueLearning(course)} disabled={resolvingNext}>
-                        <Text style={styles.primaryButtonText}>{resolvingNext ? 'Loading...' : 'Continue'}</Text>
+                        <Text style={styles.primaryButtonText}>{resolvingNext ? t('loading') : t('continue')}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>

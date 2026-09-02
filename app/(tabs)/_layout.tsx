@@ -3,8 +3,11 @@ import { Tabs } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 
 export default function TabsLayout() {
+  const { t } = useLanguage();
+
   return (
     <Tabs
       screenOptions={({ route }) => ({
@@ -30,10 +33,10 @@ export default function TabsLayout() {
         },
       })}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home' }} />
-      <Tabs.Screen name="learn" options={{ title: 'Learn' }} />
-      <Tabs.Screen name="progress" options={{ title: 'Progress' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
+      <Tabs.Screen name="index" options={{ title: t('home') }} />
+      <Tabs.Screen name="learn" options={{ title: t('learn') }} />
+      <Tabs.Screen name="progress" options={{ title: t('progress') }} />
+      <Tabs.Screen name="profile" options={{ title: t('profile') }} />
     </Tabs>
   );
 }

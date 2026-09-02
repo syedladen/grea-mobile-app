@@ -3,6 +3,7 @@ import { ReactNode } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 
 type AppHeaderProps = {
   title?: string;
@@ -12,19 +13,21 @@ type AppHeaderProps = {
 };
 
 export function AppHeader({ title, subtitle, onBack, action }: AppHeaderProps) {
+  const { t, isRTL } = useLanguage();
+
   return (
     <View style={styles.headerWrap}>
-      <View style={styles.topRow}>
+      <View style={[styles.topRow, { flexDirection: isRTL ? 'row-reverse' : 'row' }]}>
         <TouchableOpacity onPress={onBack} style={styles.backButton} accessibilityRole="button">
           <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{t('back')}</Text>
         </TouchableOpacity>
         {action ? <View style={styles.actionWrap}>{action}</View> : null}
       </View>
       {(title || subtitle) ? (
         <View style={styles.titleBlock}>
-          {title ? <Text style={styles.title}>{title}</Text> : null}
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+          {title ? <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{title}</Text> : null}
+          {subtitle ? <Text style={[styles.subtitle, { textAlign: isRTL ? 'right' : 'left' }]}>{subtitle}</Text> : null}
         </View>
       ) : null}
     </View>

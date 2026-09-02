@@ -6,6 +6,7 @@ import RenderHTML from 'react-native-render-html';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 import {
     apiCompleteLesson,
     apiGetCurriculumFresh,
@@ -19,14 +20,15 @@ import {
 import { verifyItemCompletionWithRetry } from '@/src/lib/completion-sync';
 
 export default function LessonScreen() {
+  const { t, isRTL } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
   const [lesson, setLesson] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [marking, setMarking] = useState(false);
   const [error, setError] = useState('');
-  const retryableFailureText = "We haven't received the updated completion status yet.";
-  const retryButtonText = 'Check Again';
+  const retryableFailureText = t('completionPending');
+  const retryButtonText = t('checkAgain');
   const requestVersionRef = useRef(0);
 
   const loadLesson = useCallback(async () => {
@@ -126,7 +128,7 @@ export default function LessonScreen() {
       }
       setError(retryableFailureText);
     }
-  }, [id, lesson?.course_id, lesson?.courseId, marking]);
+  }, [id, lesson?.course_id, lesson?.courseId, marking, retryableFailureText]);
 
   const handleRetry = () => {
     if (!marking) {
@@ -268,7 +270,7 @@ export default function LessonScreen() {
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
-          <Text style={styles.backText}>Back</Text>
+          <Text style={styles.backText}>{t('back')}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => router.push('/(tabs)')} style={styles.homeButton}>
           <Ionicons name="home" size={18} color={theme.colors.text} />
@@ -279,7 +281,7 @@ export default function LessonScreen() {
         <View style={styles.loadingBox}><ActivityIndicator color={theme.colors.gold} size="large" /></View>
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
-          <Text style={styles.title}>{decodeHtmlEntities(lesson?.title || 'Lesson')}</Text>
+          <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{decodeHtmlEntities(lesson?.title || t('lesson'))}</Text>
           {error ? (
             <View style={styles.errorBox}>
               <Text style={styles.error}>{error}</Text>
@@ -295,7 +297,7 @@ export default function LessonScreen() {
             <>
               <RenderHTML
                 contentWidth={contentWidth}
-                source={{ html: articleContent || '<p>No content available.</p>' }}
+                source={{ html: articleContent || `<p>${t('noItemsInSection')}</p>` }}
                 baseStyle={{
                   color: theme.colors.text,
                   fontSize: 16,
@@ -316,10 +318,10 @@ export default function LessonScreen() {
 
               <View style={styles.actionRow}>
                 {lesson?.completed ? (
-                  <View style={styles.completedPill}><Text style={styles.completedText}>Completed</Text></View>
+                  <View style={styles.completedPill}><Text style={styles.completedText}>{t('completed')}</Text></View>
                 ) : (
                   <TouchableOpacity style={styles.primaryButton} onPress={handleComplete} disabled={marking}>
-                    <Text style={styles.primaryButtonText}>{marking ? 'Saving...' : 'Mark Complete'}</Text>
+                    <Text style={styles.primaryButtonText}>{marking ? t('saving') : t('markComplete')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -330,13 +332,13 @@ export default function LessonScreen() {
             {lesson?.previous_id ? (
               <TouchableOpacity style={styles.navButton} onPress={() => goToNode(lesson.previous_type, lesson.previous_id)}>
                 <Ionicons name="chevron-back" size={18} color={theme.colors.text} />
-                <Text style={styles.navText}>Previous</Text>
+                <Text style={styles.navText}>{t('previous')}</Text>
               </TouchableOpacity>
             ) : <View style={styles.navPlaceholder} />}
 
             {lesson?.next_id ? (
               <TouchableOpacity style={styles.navButtonPrimary} onPress={() => goToNode(lesson.next_type, lesson.next_id)}>
-                <Text style={styles.navTextPrimary}>Next</Text>
+                <Text style={styles.navTextPrimary}>{t('next')}</Text>
                 <Ionicons name="chevron-forward" size={18} color={theme.colors.background} />
               </TouchableOpacity>
             ) : <View style={styles.navPlaceholder} />}

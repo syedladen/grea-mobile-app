@@ -2,6 +2,12 @@ import * as SecureStore from 'expo-secure-store';
 
 export const API_BASE_URL = 'https://globalrealestateacademy.org/wp-json/grea-mobile/v1';
 
+export type ApiLanguage = 'en' | 'ar';
+
+export type ApiRequestOptions = {
+  language?: ApiLanguage;
+};
+
 export type ApiMeta = {
   message?: string;
   [key: string]: unknown;
@@ -614,13 +620,20 @@ function appendCacheBust(path: string, cacheBust?: number | string): string {
   return `${rawPath}${separator}_grea_ts=${encodeURIComponent(value)}`;
 }
 
-async function request<T>(path: string, options: RequestInit = {}, token?: string | null, fresh = false, cacheBust?: number | string): Promise<T> {
+function appendLanguage(path: string, language?: ApiLanguage): string {
+  if (!language) return path;
+  const separator = path.includes('?') ? '&' : '?';
+  return `${path}${separator}lang=${encodeURIComponent(language)}`;
+}
+
+async function request<T>(path: string, options: RequestInit = {}, token?: string | null, fresh = false, cacheBust?: number | string, requestOptions?: ApiRequestOptions): Promise<T> {
   const baseHeaders = {
     ...getApiHeaders(token),
     ...(options.headers ? (options.headers as Record<string, string>) : {}),
   };
   const headers = formatFormDataHeaders(baseHeaders, options.body);
-  const effectivePath = fresh || cacheBust !== undefined ? appendCacheBust(path, cacheBust ?? Date.now()) : path;
+  const cachePath = fresh || cacheBust !== undefined ? appendCacheBust(path, cacheBust ?? Date.now()) : path;
+  const effectivePath = appendLanguage(cachePath, requestOptions?.language);
 
   const response = await fetch(buildUrl(effectivePath), {
     ...options,

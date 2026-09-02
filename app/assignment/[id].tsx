@@ -8,6 +8,7 @@ import RenderHTML from 'react-native-render-html';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 import {
     apiGetAssignmentSubmission,
     apiGetCourses,
@@ -57,6 +58,7 @@ function formatFileSize(size?: number | string | null): string {
 }
 
 export default function AssignmentScreen() {
+  const { t, isRTL } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
   const [lesson, setLesson] = useState<any>(null);
@@ -143,15 +145,15 @@ export default function AssignmentScreen() {
   const statusLabel = useMemo(() => {
     switch (assignmentStatus) {
       case 'submitted':
-        return 'Submitted';
+        return t('submitted');
       case 'graded':
-        return 'Graded';
+        return t('graded');
       case 'resubmit':
-        return 'Resubmission Required';
+        return t('resubmissionRequired');
       default:
-        return 'Not Submitted';
+        return t('notSubmitted');
     }
-  }, [assignmentStatus]);
+  }, [assignmentStatus, t]);
 
   const assignmentHtml = sanitizeContentForNative(lesson?.content || lesson?.body || '');
   const assignmentText = cleanDisplayText(lesson?.content || lesson?.body || '');
@@ -311,7 +313,7 @@ export default function AssignmentScreen() {
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
-            <Text style={styles.backText}>Back</Text>
+            <Text style={styles.backText}>{t('back')}</Text>
           </TouchableOpacity>
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={() => router.push('/(tabs)')} style={styles.homeButton}>
@@ -328,15 +330,15 @@ export default function AssignmentScreen() {
           <View style={styles.loadingBox}><ActivityIndicator color={theme.colors.gold} size="large" /></View>
         ) : (
           <>
-            <Text style={styles.title}>{cleanDisplayText(lesson?.title || 'Assignment')}</Text>
+            <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{cleanDisplayText(lesson?.title || t('assignment'))}</Text>
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
             {assignmentHtml ? (
               <View style={styles.briefBox}>
-                <Text style={styles.sectionLabel}>Brief</Text>
+                <Text style={styles.sectionLabel}>{t('brief')}</Text>
                 <RenderHTML
                   contentWidth={width - 40}
-                  source={{ html: assignmentHtml || '<p>No brief available.</p>' }}
+                  source={{ html: assignmentHtml || `<p>${t('brief')}</p>` }}
                   baseStyle={{ color: theme.colors.text, fontSize: 16, lineHeight: 26 }}
                   tagsStyles={{
                     p: { color: theme.colors.text, marginBottom: 12 },
@@ -356,36 +358,36 @@ export default function AssignmentScreen() {
 
             {!assignmentHtml && assignmentText ? (
               <View style={styles.briefBox}>
-                <Text style={styles.sectionLabel}>Brief</Text>
+                <Text style={styles.sectionLabel}>{t('brief')}</Text>
                 <Text style={styles.briefText}>{assignmentText}</Text>
               </View>
             ) : null}
 
             {(assignmentStatus === 'graded' || assignmentStatus === 'submitted' || assignmentStatus === 'resubmit' || hasResponseText || existingFiles.length > 0) && (
               <View style={styles.submissionCard}>
-                <Text style={styles.sectionLabel}>Submission</Text>
+                <Text style={styles.sectionLabel}>{t('submission')}</Text>
 
                 {assignmentStatus === 'graded' && scoreValue ? (
-                  <Text style={styles.scoreText}>Score: {scoreValue}</Text>
+                  <Text style={styles.scoreText}>{t('score')}: {scoreValue}</Text>
                 ) : null}
 
                 {submission?.feedback ? (
                   <View style={styles.feedbackBox}>
-                    <Text style={styles.feedbackTitle}>Instructor feedback</Text>
+                    <Text style={styles.feedbackTitle}>{t('instructorFeedback')}</Text>
                     <Text style={styles.feedbackText}>{cleanDisplayText(submission.feedback)}</Text>
                   </View>
                 ) : null}
 
                 {hasResponseText ? (
                   <View style={styles.responseBox}>
-                    <Text style={styles.boxTitle}>Your written response</Text>
+                    <Text style={styles.boxTitle}>{t('yourWrittenResponse')}</Text>
                     <Text style={styles.responseText}>{cleanDisplayText(submission?.text ?? submission?.content ?? '')}</Text>
                   </View>
                 ) : null}
 
                 {existingFiles.length > 0 ? (
                   <View style={styles.responseBox}>
-                    <Text style={styles.boxTitle}>Uploaded files</Text>
+                    <Text style={styles.boxTitle}>{t('uploadedFiles')}</Text>
                     {existingFiles.map((file: any, index: number) => {
                       const ext = String(file.ext || file.name?.split('.').pop() || 'file').toUpperCase();
                       const fileName = String(file.name || `File ${index + 1}`);
@@ -397,7 +399,7 @@ export default function AssignmentScreen() {
                             <Text style={styles.fileName}>{fileName}</Text>
                             <Text style={styles.fileMeta}>{formatFileSize(file.size)} • {file.ext || 'file'}</Text>
                           </View>
-                          <Text style={styles.openText}>Open</Text>
+                          <Text style={styles.openText}>{t('open')}</Text>
                         </TouchableOpacity>
                       );
                     })}
@@ -414,19 +416,19 @@ export default function AssignmentScreen() {
 
             {canSubmit ? (
               <View style={styles.formBox}>
-                <Text style={styles.sectionLabel}>Update / Resubmit</Text>
+                  <Text style={styles.sectionLabel}>{t('updateResubmit')}</Text>
                 <TextInput
                   style={styles.editor}
                   value={text}
                   onChangeText={setText}
                   multiline
-                  placeholder="Write your response here..."
+                  placeholder={t('writeResponse')}
                   placeholderTextColor={theme.colors.muted}
                   textAlignVertical="top"
                 />
 
                 <View style={styles.uploadBox}>
-                  <Text style={styles.uploadHeading}>Upload files</Text>
+                  <Text style={styles.uploadHeading}>{t('uploadFiles')}</Text>
                   <Text style={styles.uploadMeta}>{`Up to ${maxFiles} files • ${maxMb} MB each • ${allowedExts.join(', ').toUpperCase()}`}</Text>
 
                   {selectedFiles.length > 0 ? (
@@ -435,7 +437,7 @@ export default function AssignmentScreen() {
                         <View key={`${file.name}-${index}`} style={styles.selectedFileRow}>
                           <Text style={styles.selectedFileName} numberOfLines={1}>{file.name}</Text>
                           <TouchableOpacity style={styles.removeButton} onPress={() => setSelectedFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}>
-                            <Text style={styles.removeButtonText}>Remove</Text>
+                            <Text style={styles.removeButtonText}>{t('remove')}</Text>
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -443,25 +445,25 @@ export default function AssignmentScreen() {
                   ) : null}
 
                   <TouchableOpacity style={styles.secondaryButton} onPress={handleSelectFiles}>
-                    <Text style={styles.secondaryButtonText}>Add file(s)</Text>
+                    <Text style={styles.secondaryButtonText}>{t('addFiles')}</Text>
                   </TouchableOpacity>
                 </View>
 
                 <View style={styles.submitStack}>
                   <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={saving}>
-                    <Text style={styles.primaryButtonText}>{saving ? 'Submitting...' : assignmentStatus === 'resubmit' ? 'Resubmit Assignment' : assignmentStatus === 'submitted' ? 'Update Submission' : 'Submit Assignment'}</Text>
+                    <Text style={styles.primaryButtonText}>{saving ? t('loading') : assignmentStatus === 'resubmit' ? t('submitAssignment') : assignmentStatus === 'submitted' ? t('updateResubmit') : t('submitAssignment')}</Text>
                   </TouchableOpacity>
                   {showSuccessActions ? (
                     <>
                       <TouchableOpacity style={styles.primaryButton} onPress={() => void goToNextItem()}>
-                        <Text style={styles.primaryButtonText}>Continue / Next Item</Text>
+                        <Text style={styles.primaryButtonText}>{t('continueNextItem')}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push({ pathname: '/course/[id]', params: { id: String(lesson?.course_id ?? lesson?.courseId ?? 0) } })}>
-                        <Text style={styles.secondaryButtonText}>Back to Course</Text>
+                        <Text style={styles.secondaryButtonText}>{t('backToCourse')}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.tertiaryButton} onPress={() => router.push('/(tabs)')}>
                         <Ionicons name="home" size={16} color={theme.colors.text} />
-                        <Text style={styles.tertiaryButtonText}>Home</Text>
+                        <Text style={styles.tertiaryButtonText}>{t('home')}</Text>
                       </TouchableOpacity>
                     </>
                   ) : null}
@@ -469,10 +471,10 @@ export default function AssignmentScreen() {
               </View>
             ) : (
               <View style={styles.closedBox}>
-                <Text style={styles.closedTitle}>Submission closed</Text>
-                <Text style={styles.closedText}>This assignment is no longer accepting new responses or files.</Text>
+                <Text style={styles.closedTitle}>{t('submissionClosed')}</Text>
+                <Text style={styles.closedText}>{t('assignmentClosed')}</Text>
                 <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push({ pathname: '/course/[id]', params: { id: String(lesson?.course_id ?? lesson?.courseId ?? 0) } })}>
-                  <Text style={styles.secondaryButtonText}>Back to Course</Text>
+                  <Text style={styles.secondaryButtonText}>{t('backToCourse')}</Text>
                 </TouchableOpacity>
               </View>
             )}

@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { theme } from '@/constants/theme';
+import { useLanguage } from '@/src/i18n';
 
 type EmptyStateProps = {
   title: string;
@@ -8,10 +9,12 @@ type EmptyStateProps = {
 };
 
 export function EmptyState({ title, message }: EmptyStateProps) {
+  const { isRTL } = useLanguage();
+
   return (
     <View style={styles.emptyCard}>
-      <Text style={styles.title}>{title}</Text>
-      {message ? <Text style={styles.message}>{message}</Text> : null}
+      <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{title}</Text>
+      {message ? <Text style={[styles.message, { textAlign: isRTL ? 'right' : 'left' }]}>{message}</Text> : null}
     </View>
   );
 }
