@@ -9,7 +9,7 @@ import { apiGetCoursesFresh, apiGetCurriculumFresh, apiGetMe, decodeHtmlEntities
 import { findFirstUnfinishedItem, getCurriculumNavigationTarget } from '@/src/lib/curriculum-navigation';
 
 export default function HomeScreen() {
-  const { t, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
   const [user, setUser] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +25,7 @@ export default function HomeScreen() {
     }
 
     try {
-      const [me, courseList] = await Promise.all([apiGetMe(token), apiGetCoursesFresh(token)]);
+      const [me, courseList] = await Promise.all([apiGetMe(token), apiGetCoursesFresh(token, language)]);
       const meUser = (me.user ?? me.data ?? me) as any;
       setUser(meUser);
       setCourses(Array.isArray(courseList) ? courseList : []);
@@ -36,7 +36,7 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [language]);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,7 +65,7 @@ export default function HomeScreen() {
 
     try {
       setResolvingNext(true);
-      const curriculum = await apiGetCurriculumFresh(course.id ?? course.course_id ?? 0, token);
+      const curriculum = await apiGetCurriculumFresh(course.id ?? course.course_id ?? 0, token, language);
       const next = findFirstUnfinishedItem(curriculum);
       const target = next ? getCurriculumNavigationTarget(next) : null;
 

@@ -8,7 +8,7 @@ import { useLanguage } from '@/src/i18n';
 import { apiGetCoursesFresh, decodeHtmlEntities, getErrorMessage, getStoredToken } from '@/src/lib/api';
 
 export default function LearnScreen() {
-  const { t, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -22,7 +22,7 @@ export default function LearnScreen() {
     }
 
     try {
-      const courseList = await apiGetCoursesFresh(token);
+      const courseList = await apiGetCoursesFresh(token, language);
       setCourses(Array.isArray(courseList) ? courseList : []);
       setError('');
     } catch (err) {
@@ -31,7 +31,7 @@ export default function LearnScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [language]);
 
   useFocusEffect(
     useCallback(() => {

@@ -15,12 +15,25 @@ import {
     decodeHtmlEntities,
     getErrorMessage,
     getStoredToken,
-    isMasteriyoSyncFailure,
+    isItemCompletedFromProgress,
 } from '@/src/lib/api';
 import { verifyItemCompletionWithRetry } from '@/src/lib/completion-sync';
+import { isLocallyCompleted, recordLocalCompletion, removeLocalCompletion } from '@/src/lib/local-completion';
+
+function mergeLessonState(existing: any, incoming: any, locallyCompleted: boolean) {
+  return {
+    ...(existing ?? {}),
+    ...(incoming ?? {}),
+    completed: existing?.completed === true || incoming?.completed === true || locallyCompleted,
+  };
+}
+
+function isDefinitiveCompletionRejection(error: any): boolean {
+  return [401, 403, 404].includes(Number(error?.status));
+}
 
 export default function LessonScreen() {
-  const { t, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
   const [lesson, setLesson] = useState<any>(null);
@@ -41,9 +54,23 @@ export default function LessonScreen() {
     const version = ++requestVersionRef.current;
 
     try {
-      const data = await apiGetLessonFresh(id, token);
+      const data = await apiGetLessonFresh(id, token, language);
+      if (__DEV__) {
+        console.log('[LESSON COMPLETION DIAG]', {
+          id: data?.id ?? id,
+          course_id: data?.course_id ?? data?.courseId,
+          completed: data?.completed,
+        });
+      }
+      const courseId = data?.course_id ?? data?.courseId ?? lesson?.course_id ?? lesson?.courseId;
+      const progress = courseId ? await apiGetProgressFresh(courseId, token).catch(() => null) : null;
+      const locallyCompleted = courseId ? await isLocallyCompleted(courseId, id) : false;
+      const progressCompleted = isItemCompletedFromProgress(progress, id);
       if (version !== requestVersionRef.current) return;
-      setLesson(data);
+      if (data) {
+        setLesson((previous: any) => mergeLessonState(previous, data, progressCompleted || locallyCompleted));
+        if (__DEV__) console.log('[GREA COMPLETION DISPLAY]', { itemId: String(id), courseId, apiCompleted: data.completed === true, progressCompleted, localCompleted: locallyCompleted, finalCompleted: data.completed === true || progressCompleted || locallyCompleted });
+      }
       setError('');
     } catch (err) {
       if (version !== requestVersionRef.current) return;
@@ -53,7 +80,11 @@ export default function LessonScreen() {
         setLoading(false);
       }
     }
-  }, [id]);
+  }, [id, language, lesson?.course_id, lesson?.courseId]);
+
+  const setVerifiedLesson = useCallback((verifiedLesson?: any) => {
+    setLesson((previous: any) => mergeLessonState(previous, verifiedLesson, true));
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -75,21 +106,6 @@ export default function LessonScreen() {
     return () => subscription.remove();
   }, [loadLesson]);
 
-  const reconcileAcceptedCompletion = useCallback(async (token: string, courseId?: number | string | null, refreshedLesson?: any) => {
-    const finalLesson = refreshedLesson ?? (await apiGetLessonFresh(id as string, token).catch(() => null));
-    if (finalLesson?.completed === true) {
-      setLesson(finalLesson);
-      setError('');
-    }
-
-    if (courseId) {
-      await Promise.all([
-        apiGetProgressFresh(courseId, token).catch(() => null),
-        apiGetCurriculumFresh(courseId, token).catch(() => []),
-      ]);
-    }
-  }, [id]);
-
   const handleCheckAgain = useCallback(async () => {
     const token = await getStoredToken();
     if (!token || !id || marking) return;
@@ -103,19 +119,17 @@ export default function LessonScreen() {
         courseId,
         token,
         itemType: 'lesson',
+        language,
         delays: [0, 250, 750, 1500, 3000],
       });
 
       if (verification.completed) {
-        const finalLesson = verification.lesson ?? await apiGetLessonFresh(id, token).catch(() => null);
-        if (finalLesson) {
-          setLesson(finalLesson);
-        }
+        setVerifiedLesson(verification.lesson);
         setError('');
         if (courseId) {
           await Promise.all([
             apiGetProgressFresh(courseId, token).catch(() => null),
-            apiGetCurriculumFresh(courseId, token).catch(() => []),
+            apiGetCurriculumFresh(courseId, token, language).catch(() => []),
           ]);
         }
         return;
@@ -128,7 +142,7 @@ export default function LessonScreen() {
       }
       setError(retryableFailureText);
     }
-  }, [id, lesson?.course_id, lesson?.courseId, marking, retryableFailureText]);
+  }, [id, language, lesson?.course_id, lesson?.courseId, marking, retryableFailureText, setVerifiedLesson]);
 
   const handleRetry = () => {
     if (!marking) {
@@ -140,65 +154,105 @@ export default function LessonScreen() {
     const token = await getStoredToken();
     if (!token || !id || marking) return;
 
+    const courseId = lesson?.course_id ?? lesson?.courseId;
+
     try {
       setMarking(true);
       setError('');
 
-      const result = await apiCompleteLesson(id, token);
-      const syncFailed = isMasteriyoSyncFailure(result);
-      const courseId = result.course_id ?? result.courseId ?? lesson?.course_id ?? lesson?.courseId;
-
-      if (!syncFailed) {
-        await reconcileAcceptedCompletion(token, courseId, await apiGetLessonFresh(id, token).catch(() => null));
-        return;
+      if (courseId) {
+        await recordLocalCompletion(courseId, id);
       }
-
+      setLesson((previous: any) => mergeLessonState(previous, { completed: true }, true));
+      setError('');
       if (__DEV__) {
-        console.warn('Lesson completion sync observed; verifying final server state.', result);
+        console.log('[GREA OPTIMISTIC COMPLETE]', {
+          lessonId: id,
+          courseId,
+          saved: Boolean(courseId),
+        });
       }
+
+      const result = await apiCompleteLesson(id, token);
 
       const verification = await verifyItemCompletionWithRetry({
         itemId: id,
         courseId,
         token,
         itemType: 'lesson',
+        language,
         delays: [250, 750, 1500, 3000],
       });
 
       if (verification.completed) {
-        const finalLesson = verification.lesson ?? await apiGetLessonFresh(id, token).catch(() => null);
-        if (finalLesson) {
-          setLesson(finalLesson);
-        }
+        setVerifiedLesson(verification.lesson);
         setError('');
         if (courseId) {
           await Promise.all([
             apiGetProgressFresh(courseId, token).catch(() => null),
-            apiGetCurriculumFresh(courseId, token).catch(() => []),
+            apiGetCurriculumFresh(courseId, token, language).catch(() => []),
           ]);
         }
         return;
       }
 
       if (__DEV__) {
-        console.warn('Lesson completion could not be confirmed after GET verification.', verification);
+        console.warn('Lesson completion could not be confirmed after GET verification.', { result, verification });
       }
 
-      setError(retryableFailureText);
+      setError('');
     } catch (err) {
       if (__DEV__) {
-        console.log('[LESSON COMPLETE ERROR]', JSON.stringify({
-          status: (err as any)?.status,
-          body: (err as any)?.body,
-        }, null, 2));
+        console.log('[LESSON COMPLETE ERROR]', { lessonId: id, courseId, status: (err as any)?.status });
       }
 
-      const courseId = lesson?.course_id ?? lesson?.courseId;
+      if (isDefinitiveCompletionRejection(err)) {
+        if (courseId) await removeLocalCompletion(courseId, id);
+        setLesson((previous: any) => ({ ...(previous ?? {}), completed: false }));
+        setError(getErrorMessage(err));
+        return;
+      }
+
+      if (__DEV__) {
+        const errorBody = (err as any)?.body;
+        const errorData = errorBody?.data;
+        const sync = errorData?.sync;
+        const masteriyoData = sync?.masteriyo_data;
+
+        if (String(id) === '860') {
+          console.log('[MASTERIYO 860 WRITE ERROR]', JSON.stringify({
+            status: (err as any)?.status,
+            code: errorBody?.code,
+            message: errorBody?.message,
+            data: errorData,
+            sync,
+            masteriyo_error: sync?.masteriyo_error,
+            masteriyo_data: masteriyoData,
+            masteriyo_data_fields: masteriyoData ? {
+              http: masteriyoData.http,
+              response: masteriyoData.response,
+              course_post_id: masteriyoData.course_post_id,
+              course_progress_id: masteriyoData.course_progress_id,
+              item_id: masteriyoData.item_id,
+              item_type: masteriyoData.item_type,
+              existing_row_id: masteriyoData.existing_row_id,
+              verification_error: masteriyoData.verification_error,
+            } : undefined,
+            full_body: errorBody,
+          }, null, 2));
+          console.log('[MASTERIYO 860 CONTEXT]', JSON.stringify({
+            lessonId: 860,
+            courseId: 828,
+          }, null, 2));
+        }
+      }
+
       const verification = await verifyItemCompletionWithRetry({
         itemId: id,
         courseId,
         token,
         itemType: 'lesson',
+        language,
         delays: [250, 750, 1500, 3000],
       });
       const verifiedLessonState = verification.lesson as any;
@@ -218,15 +272,12 @@ export default function LessonScreen() {
       }
 
       if (verification.completed) {
-        const finalLesson = verification.lesson ?? await apiGetLessonFresh(id, token).catch(() => null);
-        if (finalLesson) {
-          setLesson(finalLesson);
-        }
+        setVerifiedLesson(verification.lesson);
         setError('');
         if (resolvedCourseId) {
           await Promise.all([
             apiGetProgressFresh(resolvedCourseId, token).catch(() => null),
-            apiGetCurriculumFresh(resolvedCourseId, token).catch(() => []),
+            apiGetCurriculumFresh(resolvedCourseId, token, language).catch(() => []),
           ]);
         }
         return;
@@ -235,7 +286,7 @@ export default function LessonScreen() {
       if (resolvedCourseId) {
         const [progressResult, curriculumResult] = await Promise.all([
           apiGetProgressFresh(resolvedCourseId, token).catch(() => null),
-          apiGetCurriculumFresh(resolvedCourseId, token).catch(() => []),
+          apiGetCurriculumFresh(resolvedCourseId, token, language).catch(() => []),
         ]);
 
         if (__DEV__) {
@@ -302,6 +353,8 @@ export default function LessonScreen() {
                   color: theme.colors.text,
                   fontSize: 16,
                   lineHeight: 28,
+                  direction: isRTL ? 'rtl' : 'ltr',
+                  textAlign: isRTL ? 'right' : 'left',
                 }}
                 tagsStyles={{
                   p: { color: theme.colors.text, marginBottom: 12 },

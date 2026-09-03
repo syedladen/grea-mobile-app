@@ -8,9 +8,10 @@ import { LanguageSwitcher } from '@/components/language-switcher';
 import { theme } from '@/constants/theme';
 import { useLanguage } from '@/src/i18n';
 import { apiGetCourses, apiGetMe, apiLogout, clearStoredToken, decodeHtmlEntities, getErrorMessage, getStoredToken, resolveAvatarUrl, resolveDisplayName } from '@/src/lib/api';
+import { clearLocalCompletionData } from '@/src/lib/local-completion';
 
 export default function ProfileScreen() {
-  const { t, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
   const [user, setUser] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,7 +25,7 @@ export default function ProfileScreen() {
     }
 
     try {
-      const [response, courseList] = await Promise.all([apiGetMe(token), apiGetCourses(token)]);
+      const [response, courseList] = await Promise.all([apiGetMe(token), apiGetCourses(token, language)]);
       setUser(response.user ?? response.data ?? response);
       setCourses(Array.isArray(courseList) ? courseList : []);
       setError('');
@@ -33,7 +34,7 @@ export default function ProfileScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [language]);
 
   useFocusEffect(
     useCallback(() => {
@@ -50,6 +51,7 @@ export default function ProfileScreen() {
     } catch {
       // ignore
     } finally {
+      await clearLocalCompletionData();
       await clearStoredToken();
       router.replace('/login');
     }

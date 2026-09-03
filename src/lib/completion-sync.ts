@@ -2,6 +2,8 @@ import {
     apiGetCurriculumFresh,
     apiGetLessonFresh,
     apiGetProgressFresh,
+    isItemCompletedFromProgress,
+    type ApiLanguage,
     type CourseSection,
     type LessonResponse,
     type ProgressSummary,
@@ -14,6 +16,7 @@ export type VerifyItemCompletionOptions = {
   courseId?: number | string | null;
   token: string;
   itemType?: string | null;
+  language?: ApiLanguage;
 };
 
 export type VerifyItemCompletionResult = {
@@ -63,6 +66,10 @@ export function progressContainsCompletedItem(progress: ProgressSummary | null |
     return false;
   }
 
+  if (isItemCompletedFromProgress(progress, targetId)) {
+    return true;
+  }
+
   const record = progress as Record<string, unknown>;
   const completedIds = record.completed_ids ?? record.completedIds ?? record.completed_id ?? record.completedIdsList;
 
@@ -86,13 +93,14 @@ export async function verifyItemCompletion({
   courseId,
   token,
   itemType,
+  language,
 }: VerifyItemCompletionOptions): Promise<VerifyItemCompletionResult> {
   const normalizedItemId = String(itemId);
   const shouldCheckLesson = !itemType || ['lesson', 'lesson_item', 'item'].includes(String(itemType).toLowerCase());
 
   const [lessonResponse, curriculumResponse, progressResponse] = await Promise.all([
-    shouldCheckLesson ? apiGetLessonFresh(itemId, token) : Promise.resolve(null),
-    courseId ? apiGetCurriculumFresh(courseId, token) : Promise.resolve([] as CourseSection[]),
+    shouldCheckLesson ? apiGetLessonFresh(itemId, token, language) : Promise.resolve(null),
+    courseId ? apiGetCurriculumFresh(courseId, token, language) : Promise.resolve([] as CourseSection[]),
     courseId ? apiGetProgressFresh(courseId, token) : Promise.resolve(null),
   ]);
 
@@ -140,6 +148,7 @@ export async function verifyItemCompletionWithRetry({
   courseId,
   token,
   itemType,
+  language,
   delays = [0, 250, 750, 1500, 3000],
 }: VerifyItemCompletionOptions & { delays?: number[] }): Promise<VerifyItemCompletionResult & { attempt: number }> {
   let lastResult: VerifyItemCompletionResult & { attempt: number } = {
@@ -154,7 +163,7 @@ export async function verifyItemCompletionWithRetry({
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
 
-    const result = await verifyItemCompletion({ itemId, courseId, token, itemType });
+    const result = await verifyItemCompletion({ itemId, courseId, token, itemType, language });
     lastResult = { ...result, attempt: index + 1 };
 
     if (__DEV__) {

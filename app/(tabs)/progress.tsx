@@ -8,7 +8,7 @@ import { useLanguage } from '@/src/i18n';
 import { apiGetCoursesFresh, apiGetProgressFresh, decodeHtmlEntities, getErrorMessage, getStoredToken } from '@/src/lib/api';
 
 export default function ProgressScreen() {
-  const { t, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -23,7 +23,7 @@ export default function ProgressScreen() {
         return;
       }
 
-      const courseList = await apiGetCoursesFresh(token);
+      const courseList = await apiGetCoursesFresh(token, language);
       const withProgress = await Promise.all(
         courseList.map(async (course: any) => {
           const progressData = await apiGetProgressFresh(course.id, token).catch(() => null);
@@ -42,7 +42,7 @@ export default function ProgressScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [t]);
+  }, [language, t]);
 
   useFocusEffect(
     useCallback(() => {

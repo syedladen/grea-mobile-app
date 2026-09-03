@@ -6,10 +6,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
 import { useLanguage } from '@/src/i18n';
-import { apiGetCourse, apiGetCurriculum, apiGetProgress, cleanDisplayText, deduplicateSectionItems, getErrorMessage, getStoredToken } from '@/src/lib/api';
+import { apiGetCourse, apiGetCurriculumFresh, apiGetProgressFresh, cleanDisplayText, deduplicateSectionItems, getErrorMessage, getStoredToken } from '@/src/lib/api';
+import { getLocalCompletedIds } from '@/src/lib/local-completion';
+
+function getItemIds(item: any): string[] {
+  return [item?.id, item?.lesson_id, item?.quiz_id, item?.assignment_id, item?.project_id, item?.progress_item_id]
+    .filter((value) => value !== undefined && value !== null)
+    .map(String);
+}
+
+function reconcileCurriculum(curriculum: any[], completionSet: Set<string>): any[] {
+  return curriculum.map((section: any) => {
+    const items = Array.isArray(section?.items) ? reconcileCurriculum(section.items, completionSet) : section?.items;
+    const completed = section?.completed === true || getItemIds(section).some((itemId) => completionSet.has(itemId));
+    return { ...section, ...(items ? { items } : {}), ...(completed ? { completed: true } : {}) };
+  });
+}
 
 export default function CourseDetailScreen() {
-  const { t, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [course, setCourse] = useState<any>(null);
   const [curriculum, setCurriculum] = useState<any[]>([]);
@@ -27,14 +42,29 @@ export default function CourseDetailScreen() {
     }
 
     try {
-      const [courseData, curriculumData, progressData] = await Promise.all([
-        apiGetCourse(id, token),
-        apiGetCurriculum(id, token),
-        apiGetProgress(id, token).catch(() => null),
+      const [courseData, curriculumData, progressData, localCompletedIds] = await Promise.all([
+        apiGetCourse(id, token, language),
+        apiGetCurriculumFresh(id, token, language),
+        apiGetProgressFresh(id, token).catch(() => null),
+        getLocalCompletedIds(id),
       ]);
 
+      const serverCompletedIds = [progressData?.completed_ids, progressData?.completedIds].flatMap((ids) => (
+        Array.isArray(ids) ? ids.map(String) : typeof ids === 'string' ? ids.split(',').map((value) => value.trim()).filter(Boolean) : []
+      ));
+      const completionSet = new Set([...serverCompletedIds, ...localCompletedIds]);
+      const reconciledCurriculum = Array.isArray(curriculumData) ? reconcileCurriculum(curriculumData, completionSet) : [];
+      if (__DEV__) {
+        const finalCompletedIds = new Set(completionSet);
+        const collectCompletedIds = (items: any[]) => items.forEach((item) => {
+          if (item?.completed === true) getItemIds(item).forEach((itemId) => finalCompletedIds.add(itemId));
+          if (Array.isArray(item?.items)) collectCompletedIds(item.items);
+        });
+        collectCompletedIds(reconciledCurriculum);
+        console.log('[GREA COURSE DISPLAY MERGE]', { serverCompletedIds, localCompletedIds, finalCompletedIds: [...finalCompletedIds] });
+      }
       setCourse(courseData);
-      setCurriculum(Array.isArray(curriculumData) ? curriculumData : []);
+      setCurriculum(reconciledCurriculum);
       setProgress(progressData);
       setError('');
     } catch (err) {
@@ -43,7 +73,7 @@ export default function CourseDetailScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [id]);
+  }, [id, language]);
 
   useFocusEffect(
     useCallback(() => {
@@ -56,7 +86,7 @@ export default function CourseDetailScreen() {
     return curriculum.map((section: any, sectionIndex: number) => {
       const title = cleanDisplayText(section.title || section.name || t('module'));
       const items = deduplicateSectionItems(Array.isArray(section.items) ? section.items : []);
-      const completeCount = items.filter((item: any) => item.completed).length;
+      const completeCount = items.filter((item: any) => item.completed === true).length;
       const key = `${title}-${sectionIndex}`;
       const expanded = expandedSections[key] ?? false;
       return { key, title, items, completeCount, expanded };
@@ -64,7 +94,7 @@ export default function CourseDetailScreen() {
   }, [curriculum, expandedSections, t]);
 
   const handleItemPress = (item: any) => {
-    const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id;
+    const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id ?? item.progress_item_id;
     const type = String(item.type || '').toLowerCase();
 
     if (type === 'quiz') {
@@ -91,13 +121,13 @@ export default function CourseDetailScreen() {
     const type = String(item.type || '').toUpperCase();
     const title = cleanDisplayText(item.title || item.name || t('lesson'));
     return (
-      <TouchableOpacity key={String(item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id ?? title)} style={[styles.item, item.completed && styles.itemCompleted]} onPress={() => handleItemPress(item)}>
+      <TouchableOpacity key={String(item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id ?? item.progress_item_id ?? title)} style={[styles.item, item.completed && styles.itemCompleted]} onPress={() => handleItemPress(item)}>
         <View style={styles.itemHeader}>
           <View style={[styles.dot, item.completed && styles.dotDone]} />
           <Ionicons name={getItemIcon(item.type) as any} size={18} color={item.completed ? theme.colors.success : theme.colors.gold} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.itemTitle}>{title}</Text>
-            <Text style={styles.itemMeta}>{type || 'LESSON'}</Text>
+            <Text style={[styles.itemTitle, { textAlign: isRTL ? 'right' : 'left' }]}>{title}</Text>
+            <Text style={[styles.itemMeta, { textAlign: isRTL ? 'right' : 'left' }]}>{type || 'LESSON'}</Text>
           </View>
           {item.completed ? <Text style={styles.done}>Done</Text> : null}
         </View>

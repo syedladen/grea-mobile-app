@@ -21,7 +21,7 @@ import {
 import { flattenCurriculumItems, getCurriculumNavigationTarget } from '@/src/lib/curriculum-navigation';
 
 export default function QuizScreen() {
-  const { t, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
   const { width } = useWindowDimensions();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [quiz, setQuiz] = useState<any>(null);
@@ -42,7 +42,7 @@ export default function QuizScreen() {
     }
 
     try {
-      const data = await apiGetQuiz(id, token);
+      const data = await apiGetQuiz(id, token, language);
       setQuiz(data);
       setQuestions(Array.isArray(data?.questions) ? data.questions : []);
       setError('');
@@ -51,7 +51,7 @@ export default function QuizScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, language]);
 
   useFocusEffect(
     useCallback(() => {
@@ -101,7 +101,7 @@ export default function QuizScreen() {
     try {
       await Promise.all([
         apiGetProgress(courseId, token),
-        apiGetCurriculum(courseId, token),
+        apiGetCurriculum(courseId, token, undefined, language),
       ]);
       setSyncWarning('');
       setError('');
@@ -142,7 +142,7 @@ export default function QuizScreen() {
       if (courseId) {
         await Promise.all([
           apiGetProgress(courseId, token),
-          apiGetCurriculum(courseId, token),
+          apiGetCurriculum(courseId, token, undefined, language),
         ]);
       }
 
@@ -169,7 +169,7 @@ export default function QuizScreen() {
     }
 
     try {
-      const curriculum = await apiGetCurriculum(courseId, token);
+      const curriculum = await apiGetCurriculum(courseId, token, undefined, language);
       const items = flattenCurriculumItems(curriculum);
       const currentIndexInList = items.findIndex((item) => {
         const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id;
@@ -283,7 +283,7 @@ export default function QuizScreen() {
           <RenderHTML
             contentWidth={contentWidth}
             source={{ html: rawPrompt }}
-            baseStyle={{ color: theme.colors.text, fontSize: 28, lineHeight: 36 }}
+            baseStyle={{ color: theme.colors.text, fontSize: 28, lineHeight: 36, direction: isRTL ? 'rtl' : 'ltr', textAlign: isRTL ? 'right' : 'left' }}
             tagsStyles={{
               p: { color: theme.colors.text, marginBottom: 12 },
               strong: { color: theme.colors.text },
@@ -297,7 +297,7 @@ export default function QuizScreen() {
             }}
           />
         ) : (
-          <Text style={styles.title}>{promptText}</Text>
+          <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{promptText}</Text>
         )}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 

@@ -2,7 +2,7 @@ import * as SecureStore from 'expo-secure-store';
 
 export const API_BASE_URL = 'https://globalrealestateacademy.org/wp-json/grea-mobile/v1';
 
-export type ApiLanguage = 'en' | 'ar';
+export type ApiLanguage = 'en' | 'ar' | (string & {});
 
 export type ApiRequestOptions = {
   language?: ApiLanguage;
@@ -83,6 +83,8 @@ export type Course = {
 
 export type LessonResponse = {
   id?: number;
+  course_id?: number | string;
+  courseId?: number | string;
   title?: string;
   content?: string;
   html?: string;
@@ -226,10 +228,31 @@ export type ProgressSummary = {
   total_items?: number;
   completed_count?: number;
   total_count?: number;
-  completed_ids?: Array<number | string>;
-  completedIds?: Array<number | string>;
+  completed_ids?: Array<number | string> | string;
+  completedIds?: Array<number | string> | string;
   source?: string;
 };
+
+export function isItemCompletedFromProgress(progress: ProgressSummary | null | undefined, itemId: number | string | null | undefined): boolean {
+  if (!progress || itemId === undefined || itemId === null) return false;
+
+  const completedIds = [progress.completed_ids, progress.completedIds];
+  return completedIds.some((ids) => Array.isArray(ids)
+    ? ids.some((completedId) => String(completedId) === String(itemId))
+    : typeof ids === 'string' && ids.split(',').map((completedId) => completedId.trim()).includes(String(itemId)));
+}
+
+export function mergeProgressIntoCurriculum<T extends Record<string, any>[]>(curriculum: T, progress: ProgressSummary | null | undefined): T {
+  const mergeItem = (item: Record<string, any>): Record<string, any> => {
+    const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id ?? item.progress_item_id;
+    const children = Array.isArray(item.items) ? item.items.map((child: Record<string, any>) => mergeItem(child)) : item.items;
+    const completed = item.completed === true || isItemCompletedFromProgress(progress, itemId);
+
+    return { ...item, ...(children ? { items: children } : {}), ...(completed ? { completed: true } : {}) };
+  };
+
+  return curriculum.map((section) => mergeItem(section) as T[number]) as T;
+}
 
 export type MasteriyoSyncState = {
   masteriyo_synced?: boolean;
@@ -424,6 +447,7 @@ export async function verifyLessonCompletionAfterSync(
   token: string,
   courseId?: number | string | null,
   waitMs = 350,
+  language?: ApiLanguage,
 ): Promise<{ verified: boolean; lesson: LessonResponse | null; curriculum: CourseSection[]; progress: ProgressSummary | null; detail?: string }> {
   const delayMs = Math.min(Math.max(waitMs, 0), 500);
   if (delayMs > 0) {
@@ -431,9 +455,9 @@ export async function verifyLessonCompletionAfterSync(
   }
 
   const [lessonResult, progressResult, curriculumResult] = await Promise.allSettled([
-    apiGetLesson(lessonId, token),
+    apiGetLesson(lessonId, token, undefined, language),
     courseId ? apiGetProgress(courseId, token) : Promise.resolve(null),
-    courseId ? apiGetCurriculum(courseId, token) : Promise.resolve([] as CourseSection[]),
+    courseId ? apiGetCurriculum(courseId, token, undefined, language) : Promise.resolve([] as CourseSection[]),
   ]);
 
   const lesson = lessonResult.status === 'fulfilled' ? (lessonResult.value as LessonResponse | null) : null;
@@ -635,6 +659,10 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   const cachePath = fresh || cacheBust !== undefined ? appendCacheBust(path, cacheBust ?? Date.now()) : path;
   const effectivePath = appendLanguage(cachePath, requestOptions?.language);
 
+  if (__DEV__ && requestOptions?.language) {
+    console.log('[GREA CONTENT LANGUAGE]', { endpoint: effectivePath, language: requestOptions.language });
+  }
+
   const response = await fetch(buildUrl(effectivePath), {
     ...options,
     ...(fresh || cacheBust !== undefined ? { cache: 'no-store' } : {}),
@@ -695,8 +723,8 @@ export async function apiGetMe(token?: string | null): Promise<{ user?: User; da
   return payload;
 }
 
-export async function apiGetCourses(token?: string | null): Promise<Course[]> {
-  const payload = await request<{ courses?: Course[]; data?: Course[]; items?: Course[]; [key: string]: unknown }>('courses', {}, token);
+export async function apiGetCourses(token?: string | null, language?: ApiLanguage): Promise<Course[]> {
+  const payload = await request<{ courses?: Course[]; data?: Course[]; items?: Course[]; [key: string]: unknown }>('courses', {}, token, false, undefined, { language });
 
   if (Array.isArray(payload)) return payload as Course[];
   if (Array.isArray(payload.courses)) return payload.courses;
@@ -705,8 +733,8 @@ export async function apiGetCourses(token?: string | null): Promise<Course[]> {
   return [];
 }
 
-export async function apiGetCoursesFresh(token?: string | null): Promise<Course[]> {
-  const payload = await request<{ courses?: Course[]; data?: Course[]; items?: Course[]; [key: string]: unknown }>('courses', {}, token, true, Date.now());
+export async function apiGetCoursesFresh(token?: string | null, language?: ApiLanguage): Promise<Course[]> {
+  const payload = await request<{ courses?: Course[]; data?: Course[]; items?: Course[]; [key: string]: unknown }>('courses', {}, token, true, Date.now(), { language });
 
   if (Array.isArray(payload)) return payload as Course[];
   if (Array.isArray(payload.courses)) return payload.courses;
@@ -715,8 +743,8 @@ export async function apiGetCoursesFresh(token?: string | null): Promise<Course[
   return [];
 }
 
-export async function apiGetCourse(courseId: number | string, token?: string | null): Promise<Course | null> {
-  const payload = await request<Course | { data?: Course; course?: Course }>(`courses/${courseId}`, {}, token);
+export async function apiGetCourse(courseId: number | string, token?: string | null, language?: ApiLanguage): Promise<Course | null> {
+  const payload = await request<Course | { data?: Course; course?: Course }>(`courses/${courseId}`, {}, token, false, undefined, { language });
 
   if (payload && typeof payload === 'object' && 'data' in payload && payload.data) {
     return payload.data as Course;
@@ -729,8 +757,8 @@ export async function apiGetCourse(courseId: number | string, token?: string | n
   return payload as Course;
 }
 
-export async function apiGetCurriculum(courseId: number | string, token?: string | null, cacheBust?: number | string): Promise<CourseSection[]> {
-  const payload = await request<{ curriculum?: CourseSection[]; items?: CourseSection[]; data?: CourseSection[]; [key: string]: unknown }>(`courses/${courseId}/curriculum`, {}, token, false, cacheBust);
+export async function apiGetCurriculum(courseId: number | string, token?: string | null, cacheBust?: number | string, language?: ApiLanguage): Promise<CourseSection[]> {
+  const payload = await request<{ curriculum?: CourseSection[]; items?: CourseSection[]; data?: CourseSection[]; [key: string]: unknown }>(`courses/${courseId}/curriculum`, {}, token, false, cacheBust, { language });
 
   if (Array.isArray(payload)) return payload as CourseSection[];
   if (Array.isArray(payload.curriculum)) return payload.curriculum;
@@ -739,12 +767,12 @@ export async function apiGetCurriculum(courseId: number | string, token?: string
   return [];
 }
 
-export async function apiGetCurriculumFresh(courseId: number | string, token?: string | null): Promise<CourseSection[]> {
-  return apiGetCurriculum(courseId, token, Date.now());
+export async function apiGetCurriculumFresh(courseId: number | string, token?: string | null, language?: ApiLanguage): Promise<CourseSection[]> {
+  return apiGetCurriculum(courseId, token, Date.now(), language);
 }
 
-export async function apiGetLesson(lessonId: number | string, token?: string | null, cacheBust?: number | string): Promise<LessonResponse | null> {
-  const payload = await request<LessonResponse | { data?: LessonResponse; lesson?: LessonResponse }>(`lessons/${lessonId}`, {}, token, false, cacheBust);
+export async function apiGetLesson(lessonId: number | string, token?: string | null, cacheBust?: number | string, language?: ApiLanguage): Promise<LessonResponse | null> {
+  const payload = await request<LessonResponse | { data?: LessonResponse; lesson?: LessonResponse }>(`lessons/${lessonId}`, {}, token, false, cacheBust, { language });
 
   if (payload && typeof payload === 'object' && 'data' in payload && payload.data) {
     return payload.data as LessonResponse;
@@ -757,8 +785,8 @@ export async function apiGetLesson(lessonId: number | string, token?: string | n
   return payload as LessonResponse;
 }
 
-export async function apiGetLessonFresh(lessonId: number | string, token?: string | null): Promise<LessonResponse | null> {
-  return apiGetLesson(lessonId, token, Date.now());
+export async function apiGetLessonFresh(lessonId: number | string, token?: string | null, language?: ApiLanguage): Promise<LessonResponse | null> {
+  return apiGetLesson(lessonId, token, Date.now(), language);
 }
 
 export async function apiCompleteLesson(lessonId: number | string, token?: string | null): Promise<CompletionApiResponse> {
@@ -766,8 +794,8 @@ export async function apiCompleteLesson(lessonId: number | string, token?: strin
   return payload;
 }
 
-export async function apiGetQuiz(quizId: number | string, token?: string | null): Promise<QuizResponse | null> {
-  const payload = await request<QuizResponse | { data?: QuizResponse; quiz?: QuizResponse }>(`quizzes/${quizId}`, {}, token);
+export async function apiGetQuiz(quizId: number | string, token?: string | null, language?: ApiLanguage): Promise<QuizResponse | null> {
+  const payload = await request<QuizResponse | { data?: QuizResponse; quiz?: QuizResponse }>(`quizzes/${quizId}`, {}, token, false, undefined, { language });
 
   if (payload && typeof payload === 'object' && 'data' in payload && payload.data) {
     return payload.data as QuizResponse;
@@ -801,9 +829,10 @@ export async function apiGetAssignmentSubmission(
   assignmentId: number | string,
   token?: string | null,
   cacheBust?: number | string,
+  language?: ApiLanguage,
 ): Promise<AssignmentSubmissionResponse | null> {
   const suffix = cacheBust !== undefined ? `?_ts=${encodeURIComponent(String(cacheBust))}` : '';
-  const payload = await request<AssignmentSubmissionResponse | { data?: AssignmentSubmissionResponse; submission?: AssignmentSubmissionResponse }>(`assignments/${assignmentId}/submission${suffix}`, {}, token);
+  const payload = await request<AssignmentSubmissionResponse | { data?: AssignmentSubmissionResponse; submission?: AssignmentSubmissionResponse }>(`assignments/${assignmentId}/submission${suffix}`, {}, token, false, undefined, { language });
 
   if (payload && typeof payload === 'object' && 'data' in payload && payload.data) {
     return payload.data as AssignmentSubmissionResponse;

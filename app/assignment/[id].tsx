@@ -58,7 +58,7 @@ function formatFileSize(size?: number | string | null): string {
 }
 
 export default function AssignmentScreen() {
-  const { t, isRTL } = useLanguage();
+  const { t, language, isRTL } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { width } = useWindowDimensions();
   const [lesson, setLesson] = useState<any>(null);
@@ -105,8 +105,8 @@ export default function AssignmentScreen() {
 
     try {
       const [lessonData, submissionResponse] = await Promise.all([
-        apiGetLesson(id, token),
-        apiGetAssignmentSubmission(id, token, Date.now()),
+        apiGetLesson(id, token, undefined, language),
+        apiGetAssignmentSubmission(id, token, Date.now(), language),
       ]);
 
       if (version !== requestVersion.current) {
@@ -133,7 +133,7 @@ export default function AssignmentScreen() {
         setRefreshing(false);
       }
     }
-  }, [applyFreshSubmission, id]);
+  }, [applyFreshSubmission, id, language]);
 
   useFocusEffect(
     useCallback(() => {
@@ -167,7 +167,7 @@ export default function AssignmentScreen() {
     }
 
     try {
-      const curriculum = await apiGetCurriculum(courseId, token);
+      const curriculum = await apiGetCurriculum(courseId, token, undefined, language);
       const items = flattenCurriculumItems(curriculum);
       const currentIndex = items.findIndex((item) => {
         const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id;
@@ -184,7 +184,7 @@ export default function AssignmentScreen() {
     }
 
     router.push({ pathname: '/course/[id]', params: { id: String(courseId) } });
-  }, [id, lesson?.course_id, lesson?.courseId]);
+  }, [id, language, lesson?.course_id, lesson?.courseId]);
 
   async function handleSelectFiles() {
     if (!canSubmit) return;
@@ -268,7 +268,7 @@ export default function AssignmentScreen() {
       setShowSuccessActions(true);
 
       const followVersion = ++requestVersion.current;
-      const refreshed = await apiGetAssignmentSubmission(id, token, Date.now());
+      const refreshed = await apiGetAssignmentSubmission(id, token, Date.now(), language);
       const fresh = normalizeAssignmentSubmission(refreshed);
       if (followVersion !== requestVersion.current) {
         return;
@@ -283,8 +283,8 @@ export default function AssignmentScreen() {
       if (courseId) {
         await Promise.all([
           apiGetProgress(courseId, token),
-          apiGetCurriculum(courseId, token),
-          apiGetCourses(token),
+          apiGetCurriculum(courseId, token, undefined, language),
+          apiGetCourses(token, language),
         ]);
       }
 
@@ -335,11 +335,11 @@ export default function AssignmentScreen() {
 
             {assignmentHtml ? (
               <View style={styles.briefBox}>
-                <Text style={styles.sectionLabel}>{t('brief')}</Text>
+                <Text style={[styles.sectionLabel, { textAlign: isRTL ? 'right' : 'left' }]}>{t('brief')}</Text>
                 <RenderHTML
                   contentWidth={width - 40}
                   source={{ html: assignmentHtml || `<p>${t('brief')}</p>` }}
-                  baseStyle={{ color: theme.colors.text, fontSize: 16, lineHeight: 26 }}
+                  baseStyle={{ color: theme.colors.text, fontSize: 16, lineHeight: 26, direction: isRTL ? 'rtl' : 'ltr', textAlign: isRTL ? 'right' : 'left' }}
                   tagsStyles={{
                     p: { color: theme.colors.text, marginBottom: 12 },
                     h1: { color: theme.colors.text, fontSize: 28, marginBottom: 12 },
@@ -358,8 +358,8 @@ export default function AssignmentScreen() {
 
             {!assignmentHtml && assignmentText ? (
               <View style={styles.briefBox}>
-                <Text style={styles.sectionLabel}>{t('brief')}</Text>
-                <Text style={styles.briefText}>{assignmentText}</Text>
+                <Text style={[styles.sectionLabel, { textAlign: isRTL ? 'right' : 'left' }]}>{t('brief')}</Text>
+                <Text style={[styles.briefText, { textAlign: isRTL ? 'right' : 'left' }]}>{assignmentText}</Text>
               </View>
             ) : null}
 
