@@ -5,7 +5,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
 import { useLanguage } from '@/src/i18n';
-import { apiGetCoursesFresh, decodeHtmlEntities, getErrorMessage, getStoredToken } from '@/src/lib/api';
+import { apiGetCoursesFresh, apiGetCurriculumFresh, apiGetProgressFresh, decodeHtmlEntities, getErrorMessage, getStoredToken } from '@/src/lib/api';
+import { getReconciledCourseProgress } from '@/src/lib/course-progress';
+import { getLocalCompletedIds } from '@/src/lib/local-completion';
 
 export default function LearnScreen() {
   const { t, language, isRTL } = useLanguage();
@@ -23,7 +25,18 @@ export default function LearnScreen() {
 
     try {
       const courseList = await apiGetCoursesFresh(token, language);
-      setCourses(Array.isArray(courseList) ? courseList : []);
+      const enrolledCourses = Array.isArray(courseList) ? courseList : [];
+      const reconciledCourses = await Promise.all(enrolledCourses.map(async (course: any) => {
+        const courseId = course.id ?? course.course_id;
+        const [curriculum, progress, localCompletedIds] = await Promise.all([
+          apiGetCurriculumFresh(courseId, token, language).catch(() => null),
+          apiGetProgressFresh(courseId, token).catch(() => null),
+          getLocalCompletedIds(courseId).catch(() => []),
+        ]);
+        const reconciled = getReconciledCourseProgress({ courseId, curriculum, progress, localCompletedIds, fallbackTotal: course.total_items });
+        return { ...course, ...reconciled };
+      }));
+      setCourses(reconciledCourses);
       setError('');
     } catch (err) {
       setError(getErrorMessage(err));
@@ -59,9 +72,9 @@ export default function LearnScreen() {
           <View style={styles.emptyCard}><Text style={styles.emptyText}>{t('noCoursesAvailable')}</Text></View>
         ) : (
           courses.map((course: any) => {
-            const completed = Number(course.completed_items ?? 0);
-            const total = Number(course.total_items ?? 0);
-            const percent = total > 0 ? Math.min(100, Math.max(0, (completed / total) * 100)) : 0;
+            const completed = course.completed ?? 0;
+            const total = course.total ?? course.total_items ?? 0;
+            const percent = course.percentage ?? 0;
             const hasProgress = total > 0 || completed > 0;
 
             return (

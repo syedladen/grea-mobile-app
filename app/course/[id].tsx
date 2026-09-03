@@ -6,29 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
 import { useLanguage } from '@/src/i18n';
-import { apiGetCourse, apiGetCurriculumFresh, apiGetProgressFresh, cleanDisplayText, deduplicateSectionItems, getErrorMessage, getStoredToken } from '@/src/lib/api';
+import { apiGetCourse, apiGetCurriculumFresh, apiGetProgressFresh, cleanDisplayText, getErrorMessage, getStoredToken } from '@/src/lib/api';
+import { getReconciledCourseProgress } from '@/src/lib/course-progress';
 import { getLocalCompletedIds } from '@/src/lib/local-completion';
-
-function getItemIds(item: any): string[] {
-  return [item?.id, item?.lesson_id, item?.quiz_id, item?.assignment_id, item?.project_id, item?.progress_item_id]
-    .filter((value) => value !== undefined && value !== null)
-    .map(String);
-}
-
-function reconcileCurriculum(curriculum: any[], completionSet: Set<string>): any[] {
-  return curriculum.map((section: any) => {
-    const items = Array.isArray(section?.items) ? reconcileCurriculum(section.items, completionSet) : section?.items;
-    const completed = section?.completed === true || getItemIds(section).some((itemId) => completionSet.has(itemId));
-    return { ...section, ...(items ? { items } : {}), ...(completed ? { completed: true } : {}) };
-  });
-}
-
-function addCurriculumCompletions(items: any[], completionSet: Set<string>): void {
-  items.forEach((item) => {
-    if (item?.completed === true) getItemIds(item).forEach((itemId) => completionSet.add(itemId));
-    if (Array.isArray(item?.items)) addCurriculumCompletions(item.items, completionSet);
-  });
-}
 
 export default function CourseDetailScreen() {
   const { t, language, isRTL } = useLanguage();
@@ -36,6 +16,7 @@ export default function CourseDetailScreen() {
   const [course, setCourse] = useState<any>(null);
   const [curriculum, setCurriculum] = useState<any[]>([]);
   const [progress, setProgress] = useState<any>(null);
+  const [courseProgress, setCourseProgress] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -56,19 +37,14 @@ export default function CourseDetailScreen() {
         getLocalCompletedIds(id),
       ]);
 
-      const serverCompletedIds = [progressData?.completed_ids, progressData?.completedIds].flatMap((ids) => (
-        Array.isArray(ids) ? ids.map(String) : typeof ids === 'string' ? ids.split(',').map((value) => value.trim()).filter(Boolean) : []
-      ));
-      const completionSet = new Set([...serverCompletedIds, ...localCompletedIds]);
-      if (Array.isArray(curriculumData)) addCurriculumCompletions(curriculumData, completionSet);
-      const reconciledCurriculum = Array.isArray(curriculumData) ? reconcileCurriculum(curriculumData, completionSet) : [];
+      const reconciledProgress = getReconciledCourseProgress({ courseId: id, curriculum: curriculumData, progress: progressData, localCompletedIds, fallbackTotal: courseData?.total_items });
       if (__DEV__) {
-        const finalCompletedIds = new Set(completionSet);
-        console.log('[GREA COURSE DISPLAY MERGE]', { serverCompletedIds, localCompletedIds, finalCompletedIds: [...finalCompletedIds] });
+        console.log('[GREA COURSE DISPLAY MERGE]', { serverCompletedIds: reconciledProgress.completedIds, localCompletedIds, finalCompletedIds: reconciledProgress.completedIds });
       }
       setCourse(courseData);
-      setCurriculum(reconciledCurriculum);
+      setCurriculum(reconciledProgress.reconciledCurriculum);
       setProgress(progressData);
+      setCourseProgress(reconciledProgress);
       setError('');
     } catch (err) {
       setError(getErrorMessage(err));
@@ -88,18 +64,13 @@ export default function CourseDetailScreen() {
   const sectionItems = useMemo(() => {
     return curriculum.map((section: any, sectionIndex: number) => {
       const title = cleanDisplayText(section.title || section.name || t('module'));
-      const items = deduplicateSectionItems(Array.isArray(section.items) ? section.items : []);
+      const items = Array.isArray(section.items) ? section.items : [];
       const completeCount = items.filter((item: any) => item.completed === true).length;
       const key = `${title}-${sectionIndex}`;
       const expanded = expandedSections[key] ?? false;
       return { key, title, items, completeCount, expanded };
     });
   }, [curriculum, expandedSections, t]);
-  const overallCounts = useMemo(() => {
-    const items = sectionItems.flatMap((section) => section.items);
-    return { completed: items.filter((item: any) => item.completed === true).length, total: items.length };
-  }, [sectionItems]);
-
   const handleItemPress = (item: any) => {
     const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id ?? item.progress_item_id;
     const type = String(item.type || '').toLowerCase();
@@ -173,7 +144,7 @@ export default function CourseDetailScreen() {
             <>
               <Text style={[styles.eyebrow, { textAlign: isRTL ? 'right' : 'left' }]}>{t('course')}</Text>
               <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{cleanDisplayText(course?.title || course?.name || t('course'))}</Text>
-              <Text style={[styles.progressLabel, { textAlign: isRTL ? 'right' : 'left' }]}>{overallCounts.total > 0 ? `${Math.round((overallCounts.completed / overallCounts.total) * 100)}% ${t('complete')}` : progress ? `${progress.progress ?? progress.percentage ?? 0}% ${t('complete')}` : t('progressUnavailable')}</Text>
+              <Text style={[styles.progressLabel, { textAlign: isRTL ? 'right' : 'left' }]}>{courseProgress ? `${courseProgress.percentage}% ${t('complete')}` : progress ? `${progress.progress ?? progress.percentage ?? 0}% ${t('complete')}` : t('progressUnavailable')}</Text>
               {error ? <Text style={styles.error}>{error}</Text> : null}
             </>
           }

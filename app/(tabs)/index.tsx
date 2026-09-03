@@ -5,8 +5,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
 import { useLanguage } from '@/src/i18n';
-import { apiGetCoursesFresh, apiGetCurriculumFresh, apiGetMe, decodeHtmlEntities, getErrorMessage, getStoredToken, resolveDisplayName } from '@/src/lib/api';
+import { apiGetCoursesFresh, apiGetCurriculumFresh, apiGetMe, apiGetProgressFresh, decodeHtmlEntities, getErrorMessage, getStoredToken, resolveDisplayName } from '@/src/lib/api';
+import { getReconciledCourseProgress } from '@/src/lib/course-progress';
 import { findFirstUnfinishedItem, getCurriculumNavigationTarget } from '@/src/lib/curriculum-navigation';
+import { getLocalCompletedIds } from '@/src/lib/local-completion';
 
 export default function HomeScreen() {
   const { t, language, isRTL } = useLanguage();
@@ -27,8 +29,19 @@ export default function HomeScreen() {
     try {
       const [me, courseList] = await Promise.all([apiGetMe(token), apiGetCoursesFresh(token, language)]);
       const meUser = (me.user ?? me.data ?? me) as any;
+      const enrolledCourses = Array.isArray(courseList) ? courseList : [];
+      const reconciledCourses = await Promise.all(enrolledCourses.map(async (course: any) => {
+        const courseId = course.id ?? course.course_id;
+        const [curriculum, progress, localCompletedIds] = await Promise.all([
+          apiGetCurriculumFresh(courseId, token, language).catch(() => null),
+          apiGetProgressFresh(courseId, token).catch(() => null),
+          getLocalCompletedIds(courseId).catch(() => []),
+        ]);
+        const reconciled = getReconciledCourseProgress({ courseId, curriculum, progress, localCompletedIds, fallbackTotal: course.total_items });
+        return { ...course, ...reconciled, curriculum: reconciled.reconciledCurriculum };
+      }));
       setUser(meUser);
-      setCourses(Array.isArray(courseList) ? courseList : []);
+      setCourses(reconciledCourses);
       setError('');
     } catch (err) {
       setError(getErrorMessage(err));
@@ -65,14 +78,20 @@ export default function HomeScreen() {
 
     try {
       setResolvingNext(true);
-      const curriculum = await apiGetCurriculumFresh(course.id ?? course.course_id ?? 0, token, language);
-      const next = findFirstUnfinishedItem(curriculum);
+      const courseId = course.id ?? course.course_id ?? 0;
+      const [curriculum, progress, localCompletedIds] = await Promise.all([
+        apiGetCurriculumFresh(courseId, token, language),
+        apiGetProgressFresh(courseId, token).catch(() => null),
+        getLocalCompletedIds(courseId).catch(() => []),
+      ]);
+      const reconciled = getReconciledCourseProgress({ courseId, curriculum, progress, localCompletedIds, fallbackTotal: course.total_items });
+      const next = findFirstUnfinishedItem(reconciled.reconciledCurriculum);
       const target = next ? getCurriculumNavigationTarget(next) : null;
 
       if (target) {
         router.push(target as any);
       } else {
-        router.push({ pathname: '/course/[id]', params: { id: String(course.id ?? course.course_id ?? 0) } });
+        router.push({ pathname: '/course/[id]', params: { id: String(courseId) } });
       }
     } catch {
       router.push({ pathname: '/course/[id]', params: { id: String(course.id ?? course.course_id ?? 0) } });
@@ -119,9 +138,9 @@ export default function HomeScreen() {
               <View style={styles.emptyCard}><Text style={styles.emptyText}>{t('noCoursesFound')}</Text></View>
             ) : (
               courses.map((course: any) => {
-                const completed = Number(course.completed_items ?? 0);
-                const total = Number(course.total_items ?? 1);
-                const percent = total > 0 ? Math.min(100, Math.max(0, (completed / total) * 100)) : 0;
+                const completed = course.completed ?? 0;
+                const total = course.total ?? course.total_items ?? 0;
+                const percent = course.percentage ?? 0;
 
                 return (
                   <View key={course.id ?? course.course_id ?? course.title} style={styles.courseCard}>

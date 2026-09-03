@@ -5,7 +5,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '@/constants/theme';
 import { useLanguage } from '@/src/i18n';
-import { apiGetCoursesFresh, apiGetProgressFresh, decodeHtmlEntities, getErrorMessage, getStoredToken } from '@/src/lib/api';
+import { apiGetCoursesFresh, apiGetCurriculumFresh, apiGetProgressFresh, decodeHtmlEntities, getErrorMessage, getStoredToken } from '@/src/lib/api';
+import { getReconciledCourseProgress } from '@/src/lib/course-progress';
+import { getLocalCompletedIds } from '@/src/lib/local-completion';
 
 export default function ProgressScreen() {
   const { t, language, isRTL } = useLanguage();
@@ -24,15 +26,16 @@ export default function ProgressScreen() {
       }
 
       const courseList = await apiGetCoursesFresh(token, language);
-      const withProgress = await Promise.all(
-        courseList.map(async (course: any) => {
-          const progressData = await apiGetProgressFresh(course.id, token).catch(() => null);
-          const completed = Number(progressData?.completed_items ?? progressData?.completed_count ?? course.completed_items ?? 0);
-          const total = Number(progressData?.total_items ?? progressData?.total_count ?? course.total_items ?? 1);
-          const percentage = total > 0 ? Math.min(100, Math.max(0, Number(((completed / total) * 100).toFixed(0)))) : 0;
-          return { ...course, progress: percentage, completed, total };
-        }),
-      );
+      const withProgress = await Promise.all(courseList.map(async (course: any) => {
+        const courseId = course.id ?? course.course_id;
+        const [curriculum, progress, localCompletedIds] = await Promise.all([
+          apiGetCurriculumFresh(courseId, token, language).catch(() => null),
+          apiGetProgressFresh(courseId, token).catch(() => null),
+          getLocalCompletedIds(courseId).catch(() => []),
+        ]);
+        const reconciled = getReconciledCourseProgress({ courseId, curriculum, progress, localCompletedIds, fallbackTotal: course.total_items });
+        return { ...course, ...reconciled, progress: reconciled.percentage };
+      }));
 
       setCourses(withProgress);
       setError('');
