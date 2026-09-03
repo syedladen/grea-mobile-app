@@ -24,6 +24,7 @@ import {
     sanitizeContentForNative,
 } from '@/src/lib/api';
 import { flattenCurriculumItems, getCurriculumNavigationTarget } from '@/src/lib/curriculum-navigation';
+import { recordLocalCompletion, removeLocalCompletion } from '@/src/lib/local-completion';
 
 const defaultLimits = {
   max_files: 5,
@@ -55,6 +56,10 @@ function formatFileSize(size?: number | string | null): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isCompletedAssignmentStatus(status?: string | null): boolean {
+  return ['submitted', 'graded'].includes(String(status ?? '').toLowerCase());
 }
 
 export default function AssignmentScreen() {
@@ -115,8 +120,14 @@ export default function AssignmentScreen() {
 
       setLesson(lessonData);
       const fresh = normalizeAssignmentSubmission(submissionResponse);
+      const courseId = (submissionResponse as any)?.course_id ?? (submissionResponse as any)?.courseId ?? lessonData?.course_id ?? lessonData?.courseId;
       if (fresh) {
         applyFreshSubmission(fresh);
+        if (courseId && isCompletedAssignmentStatus(fresh.status)) {
+          await recordLocalCompletion(courseId, id);
+        } else if (courseId && String(fresh.status ?? '').toLowerCase() === 'resubmit') {
+          await removeLocalCompletion(courseId, id);
+        }
       } else {
         setSubmission(null);
         setText('');
@@ -258,6 +269,7 @@ export default function AssignmentScreen() {
       setError('');
       const result = await apiSubmitAssignment(id, text, selectedFiles, token);
       const saved = normalizeAssignmentSubmission(result.submission ?? result);
+      const courseId = (result as any)?.course_id ?? (result as any)?.courseId ?? lesson?.course_id ?? lesson?.courseId;
 
       requestVersion.current += 1;
       if (saved) {
@@ -266,29 +278,27 @@ export default function AssignmentScreen() {
         setSelectedFiles([]);
       }
       setShowSuccessActions(true);
+      setError('');
+      setSaving(false);
 
-      const followVersion = ++requestVersion.current;
-      const refreshed = await apiGetAssignmentSubmission(id, token, Date.now(), language);
-      const fresh = normalizeAssignmentSubmission(refreshed);
-      if (followVersion !== requestVersion.current) {
-        return;
-      }
-      if (fresh) {
-        applyFreshSubmission(fresh);
-      } else if (saved) {
-        applyFreshSubmission(saved);
+      if (saved && courseId && isCompletedAssignmentStatus(saved.status)) {
+        await recordLocalCompletion(courseId, id);
       }
 
-      const courseId = lesson?.course_id ?? lesson?.courseId;
       if (courseId) {
-        await Promise.all([
+        void Promise.allSettled([
+          apiGetAssignmentSubmission(id, token, Date.now(), language),
           apiGetProgress(courseId, token),
           apiGetCurriculum(courseId, token, undefined, language),
           apiGetCourses(token, language),
-        ]);
+        ]).then((results) => {
+          if (__DEV__) {
+            results.filter((entry) => entry.status === 'rejected').forEach((entry) => {
+              console.warn('[GREA ASSIGNMENT BACKGROUND REFRESH]', entry.reason);
+            });
+          }
+        });
       }
-
-      setError(result?.message ? String(result.message) : (saved ? 'Assignment submitted' : 'Submission updated'));
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

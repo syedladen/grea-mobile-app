@@ -23,6 +23,13 @@ function reconcileCurriculum(curriculum: any[], completionSet: Set<string>): any
   });
 }
 
+function addCurriculumCompletions(items: any[], completionSet: Set<string>): void {
+  items.forEach((item) => {
+    if (item?.completed === true) getItemIds(item).forEach((itemId) => completionSet.add(itemId));
+    if (Array.isArray(item?.items)) addCurriculumCompletions(item.items, completionSet);
+  });
+}
+
 export default function CourseDetailScreen() {
   const { t, language, isRTL } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -53,14 +60,10 @@ export default function CourseDetailScreen() {
         Array.isArray(ids) ? ids.map(String) : typeof ids === 'string' ? ids.split(',').map((value) => value.trim()).filter(Boolean) : []
       ));
       const completionSet = new Set([...serverCompletedIds, ...localCompletedIds]);
+      if (Array.isArray(curriculumData)) addCurriculumCompletions(curriculumData, completionSet);
       const reconciledCurriculum = Array.isArray(curriculumData) ? reconcileCurriculum(curriculumData, completionSet) : [];
       if (__DEV__) {
         const finalCompletedIds = new Set(completionSet);
-        const collectCompletedIds = (items: any[]) => items.forEach((item) => {
-          if (item?.completed === true) getItemIds(item).forEach((itemId) => finalCompletedIds.add(itemId));
-          if (Array.isArray(item?.items)) collectCompletedIds(item.items);
-        });
-        collectCompletedIds(reconciledCurriculum);
         console.log('[GREA COURSE DISPLAY MERGE]', { serverCompletedIds, localCompletedIds, finalCompletedIds: [...finalCompletedIds] });
       }
       setCourse(courseData);
@@ -92,6 +95,10 @@ export default function CourseDetailScreen() {
       return { key, title, items, completeCount, expanded };
     });
   }, [curriculum, expandedSections, t]);
+  const overallCounts = useMemo(() => {
+    const items = sectionItems.flatMap((section) => section.items);
+    return { completed: items.filter((item: any) => item.completed === true).length, total: items.length };
+  }, [sectionItems]);
 
   const handleItemPress = (item: any) => {
     const itemId = item.id ?? item.lesson_id ?? item.quiz_id ?? item.assignment_id ?? item.project_id ?? item.progress_item_id;
@@ -166,7 +173,7 @@ export default function CourseDetailScreen() {
             <>
               <Text style={[styles.eyebrow, { textAlign: isRTL ? 'right' : 'left' }]}>{t('course')}</Text>
               <Text style={[styles.title, { textAlign: isRTL ? 'right' : 'left' }]}>{cleanDisplayText(course?.title || course?.name || t('course'))}</Text>
-              <Text style={[styles.progressLabel, { textAlign: isRTL ? 'right' : 'left' }]}>{progress ? `${progress.progress ?? progress.percentage ?? 0}% ${t('complete')}` : t('progressUnavailable')}</Text>
+              <Text style={[styles.progressLabel, { textAlign: isRTL ? 'right' : 'left' }]}>{overallCounts.total > 0 ? `${Math.round((overallCounts.completed / overallCounts.total) * 100)}% ${t('complete')}` : progress ? `${progress.progress ?? progress.percentage ?? 0}% ${t('complete')}` : t('progressUnavailable')}</Text>
               {error ? <Text style={styles.error}>{error}</Text> : null}
             </>
           }

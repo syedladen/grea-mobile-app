@@ -19,6 +19,7 @@ import {
     isMasteriyoSyncFailure,
 } from '@/src/lib/api';
 import { flattenCurriculumItems, getCurriculumNavigationTarget } from '@/src/lib/curriculum-navigation';
+import { recordLocalCompletion } from '@/src/lib/local-completion';
 
 export default function QuizScreen() {
   const { t, language, isRTL } = useLanguage();
@@ -29,7 +30,6 @@ export default function QuizScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [result, setResult] = useState<any>(null);
-  const [syncWarning, setSyncWarning] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -90,24 +90,8 @@ export default function QuizScreen() {
     );
   }
 
-  async function handleRetrySync() {
-    const token = await getStoredToken();
-    const courseId = quiz?.course_id ?? quiz?.courseId;
-    if (!token || !courseId) {
-      setSyncWarning(t('retryLater'));
-      return;
-    }
-
-    try {
-      await Promise.all([
-        apiGetProgress(courseId, token),
-        apiGetCurriculum(courseId, token, undefined, language),
-      ]);
-      setSyncWarning('');
-      setError('');
-    } catch (err) {
-      setSyncWarning(t('retryFailed', { message: getErrorMessage(err) }));
-    }
+  function isPassedQuizResult(payload: any): boolean {
+    return Boolean(payload?.pass ?? payload?.passed ?? payload?.result?.pass ?? payload?.result?.passed);
   }
 
   async function handleSubmit() {
@@ -121,7 +105,6 @@ export default function QuizScreen() {
     try {
       setSubmitting(true);
       setError('');
-      setSyncWarning('');
       const payload = await apiSubmitQuiz(id, answers, token);
 
       if (__DEV__) {
@@ -139,21 +122,32 @@ export default function QuizScreen() {
       }
 
       const courseId = payload.course_id ?? payload.courseId ?? quiz?.course_id ?? quiz?.courseId;
-      if (courseId) {
-        await Promise.all([
-          apiGetProgress(courseId, token),
-          apiGetCurriculum(courseId, token, undefined, language),
-        ]);
+      const passed = isPassedQuizResult(payload);
+      setResult(payload);
+      setSubmitting(false);
+
+      if (passed && courseId) {
+        try {
+          await recordLocalCompletion(courseId, id);
+        } catch (storageError) {
+          if (__DEV__) console.warn('[GREA QUIZ LOCAL COMPLETE] Local completion could not be saved.', storageError);
+        }
       }
 
-      setResult(payload);
-
-      if (syncFailed) {
-        setSyncWarning(t('retryLater'));
+      if (courseId) {
+        void Promise.allSettled([
+          apiGetProgress(courseId, token),
+          apiGetCurriculum(courseId, token, undefined, language),
+        ]).then((results) => {
+          if (__DEV__) {
+            results.filter((entry) => entry.status === 'rejected').forEach((entry) => {
+              console.warn('[GREA QUIZ BACKGROUND REFRESH]', entry.reason);
+            });
+          }
+        });
       }
     } catch (err) {
       setError(getErrorMessage(err));
-      setSyncWarning('');
       setResult(null);
     } finally {
       setSubmitting(false);
@@ -216,22 +210,13 @@ export default function QuizScreen() {
             <Text style={styles.resultMeta}>{t('correctAnswers')}: {correctCount}</Text>
             <Text style={styles.resultMeta}>{pass ? t('passed') : t('retakeQuiz')}</Text>
 
-            {syncWarning ? (
-              <View style={styles.syncWarningBox}>
-                <Text style={styles.syncWarningText}>{syncWarning}</Text>
-                <TouchableOpacity style={styles.syncButton} onPress={() => void handleRetrySync()}>
-                  <Text style={styles.syncButtonText}>{t('retrySync')}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
             <View style={styles.resultActions}>
               {pass ? (
                 <TouchableOpacity style={styles.primaryButton} onPress={() => void goToNextItem()}>
                   <Text style={styles.primaryButtonText}>{t('continueNextItem')}</Text>
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity style={styles.primaryButton} onPress={() => { setResult(null); setSyncWarning(''); setAnswers({}); setCurrentIndex(0); setError(''); }}>
+                <TouchableOpacity style={styles.primaryButton} onPress={() => { setResult(null); setAnswers({}); setCurrentIndex(0); setError(''); }}>
                   <Text style={styles.primaryButtonText}>{t('retakeQuiz')}</Text>
                 </TouchableOpacity>
               )}
