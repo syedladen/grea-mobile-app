@@ -7,8 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { theme } from '@/constants/theme';
 import { useLanguage } from '@/src/i18n';
-import { apiGetCourses, apiGetMe, apiLogout, clearStoredToken, decodeHtmlEntities, getErrorMessage, getStoredToken, resolveAvatarUrl, resolveDisplayName } from '@/src/lib/api';
-import { clearLocalCompletionData } from '@/src/lib/local-completion';
+import { apiGetCoursesFresh, apiGetCurriculumFresh, apiGetMe, apiGetProgressFresh, apiLogout, clearStoredToken, decodeHtmlEntities, getErrorMessage, getStoredToken, resolveAvatarUrl, resolveDisplayName } from '@/src/lib/api';
+import { getReconciledCourseProgress } from '@/src/lib/course-progress';
+import { clearLocalCompletionData, getLocalCompletedIds } from '@/src/lib/local-completion';
 
 export default function ProfileScreen() {
   const { t, language, isRTL } = useLanguage();
@@ -25,9 +26,20 @@ export default function ProfileScreen() {
     }
 
     try {
-      const [response, courseList] = await Promise.all([apiGetMe(token), apiGetCourses(token, language)]);
+      const [response, courseList] = await Promise.all([apiGetMe(token), apiGetCoursesFresh(token, language)]);
+      const enrolledCourses = Array.isArray(courseList) ? courseList : [];
+      const reconciledCourses = await Promise.all(enrolledCourses.map(async (course: any) => {
+        const courseId = course.id ?? course.course_id;
+        const [curriculum, progress, localCompletedIds] = await Promise.all([
+          apiGetCurriculumFresh(courseId, token, language).catch(() => null),
+          apiGetProgressFresh(courseId, token).catch(() => null),
+          getLocalCompletedIds(courseId).catch(() => []),
+        ]);
+        const reconciled = getReconciledCourseProgress({ courseId, curriculum, progress, localCompletedIds, fallbackTotal: course.total_items });
+        return { ...course, ...reconciled };
+      }));
       setUser(response.user ?? response.data ?? response);
-      setCourses(Array.isArray(courseList) ? courseList : []);
+      setCourses(reconciledCourses);
       setError('');
     } catch (err) {
       setError(getErrorMessage(err));
@@ -57,8 +69,8 @@ export default function ProfileScreen() {
     }
   }
 
-  const totalItems = courses.reduce((sum, course) => sum + Number(course.total_items ?? 0), 0);
-  const completedItems = courses.reduce((sum, course) => sum + Number(course.completed_items ?? 0), 0);
+  const totalItems = courses.reduce((sum, course) => sum + Number(course.total ?? 0), 0);
+  const completedItems = courses.reduce((sum, course) => sum + Number(course.completed ?? 0), 0);
   const overallPercent = totalItems > 0 ? Math.min(100, Math.max(0, (completedItems / totalItems) * 100)) : 0;
   const version = Constants.expoConfig?.version ?? '1.0.0';
 
