@@ -89,10 +89,6 @@ export default function LessonScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadLesson();
-      const interval = setInterval(() => {
-        void loadLesson();
-      }, 8000);
-      return () => clearInterval(interval);
     }, [loadLesson]),
   );
 
