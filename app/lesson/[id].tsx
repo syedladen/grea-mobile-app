@@ -32,6 +32,15 @@ function isDefinitiveCompletionRejection(error: any): boolean {
   return [401, 403, 404].includes(Number(error?.status));
 }
 
+async function retireAcknowledgedCompletion(courseId: number | string | null | undefined, itemId: string) {
+  if (!courseId) return;
+  try {
+    await removeLocalCompletion(courseId, itemId);
+  } catch (err) {
+    console.warn('Could not retire acknowledged lesson completion from local storage.', err);
+  }
+}
+
 export default function LessonScreen() {
   const { t, language, isRTL } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -72,6 +81,9 @@ export default function LessonScreen() {
         if (__DEV__) console.log('[GREA COMPLETION DISPLAY]', { itemId: String(id), courseId, apiCompleted: data.completed === true, progressCompleted, localCompleted: locallyCompleted, finalCompleted: data.completed === true || progressCompleted || locallyCompleted });
       }
       setError('');
+      if (locallyCompleted && (data?.completed === true || progressCompleted)) {
+        await retireAcknowledgedCompletion(courseId, id);
+      }
     } catch (err) {
       if (version !== requestVersionRef.current) return;
       setError(getErrorMessage(err));
@@ -122,6 +134,10 @@ export default function LessonScreen() {
       if (verification.completed) {
         setVerifiedLesson(verification.lesson);
         setError('');
+        await retireAcknowledgedCompletion(
+          courseId ?? verification.lesson?.course_id ?? verification.lesson?.courseId,
+          id,
+        );
         if (courseId) {
           await Promise.all([
             apiGetProgressFresh(courseId, token).catch(() => null),
@@ -183,6 +199,10 @@ export default function LessonScreen() {
       if (verification.completed) {
         setVerifiedLesson(verification.lesson);
         setError('');
+        await retireAcknowledgedCompletion(
+          courseId ?? verification.lesson?.course_id ?? verification.lesson?.courseId,
+          id,
+        );
         if (courseId) {
           await Promise.all([
             apiGetProgressFresh(courseId, token).catch(() => null),
@@ -270,6 +290,10 @@ export default function LessonScreen() {
       if (verification.completed) {
         setVerifiedLesson(verification.lesson);
         setError('');
+        await retireAcknowledgedCompletion(
+          courseId ?? verification.lesson?.course_id ?? verification.lesson?.courseId,
+          id,
+        );
         if (resolvedCourseId) {
           await Promise.all([
             apiGetProgressFresh(resolvedCourseId, token).catch(() => null),
