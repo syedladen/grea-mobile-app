@@ -696,6 +696,29 @@ export async function apiLogin(identifier: string, password: string): Promise<{ 
   return payload;
 }
 
+export type GoogleLoginResponse = {
+  token?: string;
+  expires_in?: number;
+  user?: User;
+  provider?: string;
+  linked?: boolean;
+  created?: boolean;
+  message?: string;
+};
+
+export async function apiGoogleLogin(idToken: string, password?: string): Promise<GoogleLoginResponse> {
+  const payload = await request<GoogleLoginResponse>('auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ id_token: idToken, ...(password !== undefined ? { password } : {}) }),
+  });
+
+  if (payload.token) {
+    await setStoredToken(payload.token);
+  }
+
+  return payload;
+}
+
 export async function apiRegister(name: string, email: string, password: string): Promise<{ token?: string; user?: User; message?: string }> {
   const payload = await request<{ token?: string; user?: User; message?: string }>('auth/register', {
     method: 'POST',

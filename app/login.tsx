@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GoogleAuth } from '@/components/google-auth';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { theme } from '@/constants/theme';
 import { useLanguage } from '@/src/i18n';
@@ -15,9 +16,12 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState('');
 
   async function handleLogin() {
+    if (googleBusy) return;
+
     if (!identifier || !password) {
       setError(t('pleaseEnterCredentials'));
       return;
@@ -83,12 +87,14 @@ export default function LoginScreen() {
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          <TouchableOpacity style={styles.primaryButton} onPress={handleLogin} disabled={loading}>
+          <TouchableOpacity style={styles.primaryButton} onPress={handleLogin} disabled={loading || googleBusy}>
             {loading ? <ActivityIndicator color={theme.colors.background} /> : <Text style={styles.primaryButtonText}>{t('login')}</Text>}
           </TouchableOpacity>
 
+          <GoogleAuth disabled={loading} onBusyChange={setGoogleBusy} />
+
           <Link href="/register" asChild>
-            <TouchableOpacity style={styles.secondaryButton}>
+            <TouchableOpacity style={styles.secondaryButton} disabled={googleBusy}>
               <Text style={styles.secondaryButtonText}>{t('createAccount')}</Text>
             </TouchableOpacity>
           </Link>

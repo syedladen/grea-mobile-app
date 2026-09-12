@@ -43,7 +43,13 @@
       ],
       "expo-secure-store",
       "expo-web-browser",
-      "expo-localization"
+      "expo-localization",
+      [
+        "react-native-nitro-google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.1086555684529-seq2470u7i4dbbq4t0kku618ovu2rolq"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
