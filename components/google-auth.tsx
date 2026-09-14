@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { AuthButton, AuthError, AuthInput } from '@/components/auth-controls';
 import { theme } from '@/constants/theme';
 import { useLanguage } from '@/src/i18n';
 import { apiGoogleLogin, type ApiError } from '@/src/lib/api';
@@ -89,51 +90,41 @@ export function GoogleAuth({ disabled, onBusyChange }: { disabled: boolean; onBu
     <View style={styles.container}>
       <View style={styles.separator}><View style={styles.line} /><Text style={styles.muted}>{t('or')}</Text><View style={styles.line} /></View>
       {confirming ? (
-        <>
-          <Text style={[styles.label, alignment]}>{t('confirmExistingAccount')}</Text>
+        <View style={styles.linkPanel}>
+          <Text accessibilityRole="header" style={[styles.label, alignment]}>{t('confirmExistingAccount')}</Text>
           <Text style={[styles.muted, alignment]}>{t('existingAccountPasswordPrompt')}</Text>
-          <TextInput
-            style={[styles.input, alignment]}
+          <AuthInput
+            label={t('password')}
             value={password}
             onChangeText={setPassword}
-            placeholder={t('password')}
             accessibilityLabel={t('existingAccountPasswordPrompt')}
-            placeholderTextColor={theme.colors.muted}
             secureTextEntry
             autoCapitalize="none"
             autoCorrect={false}
             editable={!loading}
             onSubmitEditing={authenticate}
           />
-        </>
+        </View>
       ) : null}
-      {errorKey ? <Text accessibilityRole="alert" style={[styles.error, alignment]}>{t(errorKey)}</Text> : null}
-      <TouchableOpacity
-        accessibilityRole="button"
-        accessibilityState={{ disabled: disabled || loading || (confirming && !password), busy: loading }}
-        style={[styles.button, { flexDirection: isRTL ? 'row-reverse' : 'row' }, (disabled || loading) && styles.disabled]}
+      <AuthError message={errorKey ? t(errorKey) : ''} />
+      <AuthButton
+        variant={confirming ? 'primary' : 'secondary'}
+        label={t(confirming ? 'confirmAndContinue' : 'continueWithGoogle')}
+        loading={loading}
         disabled={disabled || loading || (confirming && !password)}
         onPress={authenticate}
-      >
-        {loading ? <ActivityIndicator color={theme.colors.text} /> : <>
-          {!confirming ? <Ionicons name="logo-google" size={20} color={theme.colors.text} /> : null}
-          <Text style={styles.label}>{t(confirming ? 'confirmAndContinue' : 'continueWithGoogle')}</Text>
-        </>}
-      </TouchableOpacity>
-      {confirming ? <TouchableOpacity accessibilityRole="button" onPress={cancel} disabled={loading} style={styles.cancel}><Text style={styles.muted}>{t('cancel')}</Text></TouchableOpacity> : null}
+        icon={!confirming ? <Ionicons name="logo-google" size={20} color={theme.auth.textPrimary} /> : undefined}
+      />
+      {confirming ? <AuthButton variant="text" label={t('cancel')} onPress={cancel} disabled={loading} /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 14 },
-  separator: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  container: { gap: theme.spacing.md },
+  separator: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   line: { flex: 1, height: 1, backgroundColor: theme.colors.border },
-  muted: { color: theme.colors.muted, fontSize: 14, lineHeight: 20 },
-  label: { color: theme.colors.text, fontSize: 16, fontWeight: '600', flexShrink: 1 },
-  button: { alignItems: 'center', justifyContent: 'center', gap: 10, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 14, padding: 16, minHeight: 48, backgroundColor: theme.colors.background },
-  disabled: { opacity: 0.6 },
-  input: { backgroundColor: theme.colors.input, color: theme.colors.text, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 14, padding: 16, fontSize: 16 },
-  error: { color: theme.colors.danger, fontSize: 14, lineHeight: 20 },
-  cancel: { alignItems: 'center', padding: 12, minHeight: 48 },
+  muted: { ...theme.typography.label, color: theme.auth.textSecondary },
+  label: { ...theme.typography.button, color: theme.auth.textPrimary },
+  linkPanel: { gap: theme.spacing.sm, padding: theme.spacing.sm, backgroundColor: theme.auth.surfaceInset, borderRadius: theme.auth.controlRadius, borderWidth: 1, borderColor: theme.auth.border },
 });

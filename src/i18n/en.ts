@@ -1,4 +1,7 @@
 export const en = {
+  academyName: 'Global Real Estate Academy',
+  showPassword: 'Show password',
+  hidePassword: 'Hide password',
   home: 'Home',
   learn: 'Learn',
   progress: 'Progress',

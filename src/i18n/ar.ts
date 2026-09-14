@@ -1,4 +1,7 @@
 export const ar = {
+  academyName: 'الأكاديمية العالمية للعقارات',
+  showPassword: 'إظهار كلمة المرور',
+  hidePassword: 'إخفاء كلمة المرور',
   home: 'الرئيسية',
   learn: 'التعلّم',
   progress: 'التقدّم',
